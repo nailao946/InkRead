@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- 输出为 Windows 桌面可执行程序（无控制台窗口） -->
+    <OutputType>WinExe</OutputType>
+
+    <!-- 目标框架：.NET 8，Windows 专用 TFM（提供 WPF / 注册表等 Windows API） -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+
+    <!-- WPF 桌面 UI -->
+    <UseWPF>true</UseWPF>
+    <!-- 不需要 Windows Forms -->
+    <UseWindowsForms>false</UseWindowsForms>
+
+    <!-- 程序集 / 命名空间 -->
+    <AssemblyName>InkRead</AssemblyName>
+    <RootNamespace>InkRead</RootNamespace>
+
+    <!-- 语言版本与可空性：保持显式、贴近传统写法，降低编译门槛 -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WebView2：内嵌 Edge 内核，复用现有前端。
+         版本 1.0.2792.45 为较新的稳定版；如 NuGet 还原失败，可在 VS 的“管理 NuGet 程序包”中
+         将 Microsoft.Web.WebView2 升级到最新稳定版（建议 >= 1.0.2xxx）。 -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+  <!-- 前端（../web）全部内嵌进 exe：编译产物即自包含单文件，不依赖 web 文件夹。
+       运行时由内置本地服务（LocalServer）从内嵌资源读出后喂给 WebView2。
+       开发时若要改用磁盘上的 web 目录（改完刷新即生效），
+       设置环境变量 INKREAD_WEB_DIR 指向该目录即可。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\web\**\*"
+                      Exclude="$(MSBuildThisFileDirectory)..\web\tests\**\*;$(MSBuildThisFileDirectory)..\web\tools\__pycache__\**\*;$(MSBuildThisFileDirectory)..\web\**\*.pyc">
+      <LogicalName>web/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+﻿staged=119  total_MB=54
+--- 最大的 12 个 ---
+2.61MB  s.js
+2.61MB  s.json
+2.29MB  p.js
+2.29MB  p.json
+2.28MB  c.js
+2.28MB  c.json
+1.9MB  a.js
+1.9MB  a.json
+1.67MB  m.js
+1.67MB  m.json
+1.46MB  b.js
+1.46MB  b.json
+--- 是否误入（应为空）---
+web/tests/samples/sample-mobi-c.mobi
+web/tests/samples/sample-mobi-gbk.mobi
+web/tests/samples/sample-mobi.mobi
+web/tests/samples/sample.epub
+--- 顶层目录 ---
+.gitignore:1  HANDOVER.md:1  README.en.md:1  README.md:1  THEMES.md:1  tools:3  web:101  wpf:9  "wpf:1

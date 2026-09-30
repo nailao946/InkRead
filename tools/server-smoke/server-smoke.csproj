@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>server-smoke</AssemblyName>
+    <RootNamespace>ServerSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 直接复用 WPF 项目里的 LocalServer.cs（同一份源码，独立编译便于无 GUI 冒烟测试） -->
+    <Compile Include="..\..\wpf\LocalServer.cs" />
+  </ItemGroup>
+
+</Project>

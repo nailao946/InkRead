@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="0">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>墨读 InkRead · 沉浸式英语阅读</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2C2C2A">
+<link rel="stylesheet" href="css/app.css">
+<script>
+/* 全局错误探针：把 JS 错误写到 DOM（#js-error），方便无头调试；平时无副作用 */
+document.documentElement.dataset.probe = '1';  /* 无头调试：确认 head 脚本已执行 */
+window.addEventListener('error', e => {
+  const d = document.createElement('div');
+  d.id = 'js-error';
+  d.textContent = 'JSERR: ' + e.message + ' @ ' + (e.filename || '') + ':' + e.lineno;
+  document.documentElement.appendChild(d);
+});
+window.addEventListener('unhandledrejection', e => {
+  const d = document.createElement('div');
+  d.id = 'js-promise-error';
+  d.textContent = 'PROMISE-ERR: ' + (e.reason && e.reason.message || e.reason);
+  document.documentElement.appendChild(d);
+});
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">墨</div>
+    <div class="brand-name">墨读 <span>InkRead</span></div>
+  </div>
+  <nav class="nav" id="mainNav">
+    <button class="nav-btn active" data-page="reader">阅读</button>
+    <button class="nav-btn" data-page="vocab">词库</button>
+    <button class="nav-btn" data-page="study">生词本</button>
+    <button class="nav-btn" data-page="settings">设置</button>
+  </nav>
+  <div class="top-right">
+    <select id="themeSelect" class="input theme-select" title="切换主题"></select>
+  </div>
+</header>
+
+<main>
+  <!-- 阅读：书架 + 阅读视图 -->
+  <section id="page-reader" class="page active">
+    <div id="shelfView">
+      <div class="shelf-head">
+        <h2>书架</h2>
+        <div class="shelf-actions">
+          <button id="btnImportBook" class="btn btn-primary">导入电子书</button>
+          <input type="file" id="bookFileInput" accept=".txt,.epub,.mobi,.azw,.azw3,.pdf,.html,.htm" multiple hidden>
+        </div>
+      </div>
+      <div id="shelfGroups" class="shelf-groups"></div>
+      <div class="dropzone" id="dropzone">
+        <p>支持 <b>EPUB / MOBI / TXT / PDF</b> —— 拖拽文件到这里，或点击上方按钮导入</p>
+        <p class="dropzone-sub">TXT 自动识别 UTF-8 / GBK 编码，不会乱码 · 受 DRM 保护或扫描图片版的电子书无法导入</p>
+      </div>
+      <div id="shelfList" class="shelf-list"></div>
+      <div class="shelf-empty-actions" id="shelfEmptyActions" hidden>
+        <button id="btnDemo" class="btn btn-ghost">载入示例文章（快速体验）</button>
+      </div>
+    </div>
+    <div id="readingView" hidden>
+      <div class="reading-head">
+        <button id="btnBackShelf" class="btn btn-ghost btn-sm">← 书架</button>
+        <div class="reading-title" id="readingTitle"></div>
+        <div class="reading-controls">
+          <button id="btnFont" class="btn btn-sm" title="字体与排版">Aa</button>
+          <button id="btnMode" class="btn btn-sm" title="切换阅读模式">翻页模式</button>
+          <button id="btnSpeak" class="btn btn-sm" title="朗读全文（本地 TTS）">▶ 朗读全文</button>
+          <button id="btnWordList" class="btn btn-sm" title="列出本文生词，按出现频次排序">本篇生词</button>
+        </div>
+        <div class="reading-stats" id="readingStats"></div>
+      </div>
+      <div class="reading-legend">
+        <span><i class="dot dot-unknown"></i> 生词</span>
+        <span><i class="dot dot-learning"></i> 在学</span>
+        <span><i class="dot dot-known"></i> 已学</span>
+        <span class="legend-tip">点击任意单词：释义 · 发音 · 标记 · 剑桥词典</span>
+      </div>
+      <div class="reading-body">
+        <aside id="tocSide" class="toc-side" hidden>
+          <div class="toc-head">目录
+            <button id="btnTocUnpin" class="btn btn-sm btn-ghost" title="切换为悬浮目录">⇥ 悬浮</button>
+          </div>
+          <div id="tocSideList" class="toc-list"></div>
+        </aside>
+        <div class="reading-scroll">
+          <article id="article" class="article"></article>
+          <div id="articleSentinel"></div>
+        </div>
+      </div>
+      <div class="reading-progress" id="readingProgress" title="阅读进度">
+        <i id="readingProgressBar"></i>
+        <span id="readingProgressText">0%</span>
+      </div>
+    </div>
+  </section>
+  <section id="page-vocab" class="page">
+    <div id="vocabMount"></div>
+  </section>
+
+  <!-- 生词本 -->
+  <section id="page-study" class="page">
+    <div id="studyMount"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="page-settings" class="page">
+    <div id="settingsMount"></div>
+  </section>
+</main>
+
+<!-- 悬浮目录按钮（三条杠） -->
+<button id="tocFab" class="toc-fab" title="目录" hidden>
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+</button>
+
+<!-- 目录抽屉（悬浮，覆盖式）+ 遮罩 -->
+<div id="tocMask" class="toc-mask" hidden></div>
+<aside id="tocPanel" class="toc-panel" hidden>
+  <div class="toc-head">目录
+    <span style="display:flex;gap:.4rem;align-items:center">
+      <button id="btnTocPin" class="btn btn-sm btn-ghost" title="固定到左侧">📌 固定</button>
+      <button id="btnTocClose" class="btn btn-sm btn-ghost">✕</button>
+    </span>
+  </div>
+  <div id="tocList" class="toc-list"></div>
+</aside>
+
+<!-- 翻页控制（页码指示 + 上/下页） -->
+<div id="pageIndicator" class="page-indicator" hidden></div>
+<div class="page-nav" id="pageNav" hidden>
+  <button id="btnPrevPage" class="page-nav-btn" title="上一页">‹</button>
+  <button id="btnNextPage" class="page-nav-btn" title="下一页">›</button>
+</div>
+
+<!-- 字体与排版面板 -->
+<div id="fontPanel" class="font-panel" hidden>
+  <div class="fp-title">字体与排版</div>
+  <div class="fp-row">
+    <span class="fp-label">字号</span>
+    <button class="btn btn-sm" data-fs="-1">A−</button>
+    <span class="fp-val" data-fs-val>18</span>
+    <button class="btn btn-sm" data-fs="+1">A＋</button>
+  </div>
+  <div class="fp-row">
+    <span class="fp-label">行距</span>
+    <input type="range" min="1.4" max="2.8" step="0.1" data-lh style="flex:1">
+    <span class="fp-val" data-lh-val>2.0</span>
+  </div>
+  <div class="fp-row">
+    <span class="fp-label">字体</span>
+    <select class="input" data-ff style="flex:1">
+      <option value="serif">衬线（Georgia）</option>
+      <option value="sans">无衬线（系统）</option>
+      <option value="kai">楷体</option>
+    </select>
+  </div>
+</div>
+
+<!-- 划词翻译浮动按钮 -->
+<button id="selTransBtn" class="btn btn-primary btn-sm" hidden>翻译</button>
+
+<!-- 点词悬浮窗 -->
+<div id="wordPopup" class="word-popup" hidden></div>
+
+<!-- 通用模态框 -->
+<div id="modalMask" class="modal-mask" hidden>
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<div id="toastBox" class="toast-box"></div>
+
+<script src="lib/jszip.min.js"></script>
+<script src="lib/pdf.min.js"></script>
+<script>window.pdfjsLib && pdfjsLib.GlobalWorkerOptions && (pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js');</script>
+<script src="lib/pdf.worker.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="js/desktop-bridge.js"></script>
+<script src="js/util.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/dict.js"></script>
+<script src="js/themes.js"></script>
+<script src="js/importers.js"></script>
+<script src="js/translate.js"></script>
+<script src="js/vocab.js"></script>
+<script src="js/filestore.js"></script>
+<script src="js/reader.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/app.js"></script>
+<script>
+/* PWA：仅在 http/https 下注册 Service Worker（file:// 静默跳过，避免报错）。
+   注意：Web Worker(pdf.js)、IndexedDB、speechSynthesis 等能力依赖 http(s) 环境，
+   因此桌面壳(WPF/WebView2)与本地服务器均通过 http(s) 提供本应用。 */
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function (e) {
+      console.warn('[PWA] SW 注册失败（不影响主功能）：', e && e.message);
+    });
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+﻿gh=none
+git_user=
+git_email=
+git_ver=git version 2.54.0.windows.1

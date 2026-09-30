@@ -1,0 +1,26 @@
+{
+  "name": "墨读 InkRead",
+  "short_name": "墨读",
+  "description": "沉浸式英语阅读 · 三色标注 · 生词本 · 本地 TTS",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#2C2C2A",
+  "theme_color": "#2C2C2A",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

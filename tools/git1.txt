@@ -1,0 +1,3 @@
+﻿init: warning: re-init: ignored --initial-branch=main Reinitialized existing Git repository in C:/Users/admin/Desktop/READ/.git/
+add_err: warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'HANDOVER.md', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'README.en.md', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it warning: in the working copy of 'THEMES.md', LF will be replaced by CRLF the next time Git touches it
+staged=119
