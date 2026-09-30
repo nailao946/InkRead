@@ -133,6 +133,60 @@ IR.translate = {
     });
   },
 
+  /* ---------- 阿里云机器翻译 · 通用版（TranslateGeneral，经典 RPC 接口，非大模型） ----------
+     需要一对 AccessKeyId / AccessKeySecret（阿里云控制台右上角头像 → AccessKey 管理；
+     建议用 RAM 子账号并只授权「机器翻译」权限）。调用前需先在机器翻译控制台开通通用版服务。
+     签名：阿里云 RPC V1（HMAC-SHA1）；源语言 auto 自动检测。 */
+  _aliPct(s) {
+    /* RFC3986 严格百分号编码：encodeURIComponent 之外再补 ! ' ( ) * */
+    return encodeURIComponent(String(s)).replace(/[!'()*]/g, ch => '%' + ch.charCodeAt(0).toString(16).toUpperCase());
+  },
+  _alimtErr: {
+    '10001': '请求超时，请重试', '10002': '系统错误，请重试', '10003': '原文解码失败',
+    '10005': '语向不支持（该语言对不可翻译）', '10006': '语种识别失败', '10007': '翻译失败',
+    '10008': '字符过长（单次上限 5000 字符）', '10009': '子账号没有权限（请给 RAM 子账号授权）',
+    '10010': '账号没有开通机器翻译服务', '10011': '子账号服务失败', '10012': '翻译服务调用失败',
+    '10013': '账号服务没有开通或欠费'
+  },
+  async alimt(q) {
+    const c = IR.settings.data.api.alimt || {};
+    const akId = this._cleanKey(c.accessKeyId), akSecret = this._cleanKey(c.accessKeySecret);
+    if (!akId || !akSecret) throw new Error('未配置阿里云机器翻译：设置 → 翻译接口 填 AccessKeyId / AccessKeySecret');
+    /* 1. 公共参数 + 业务参数 */
+    const ts = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    const nonce = String(Date.now()) + Math.floor(Math.random() * 1e6);
+    const params = {
+      Action: 'TranslateGeneral', Format: 'JSON', Version: '2018-10-12',
+      AccessKeyId: akId, SignatureMethod: 'HMAC-SHA1', SignatureVersion: '1.0',
+      SignatureNonce: nonce, Timestamp: ts,
+      FormatType: 'text', Scene: 'general',
+      SourceLanguage: 'auto', SourceText: q, TargetLanguage: 'zh'
+    };
+    /* 2. 按 key 排序构造规范化查询串 */
+    const canon = Object.keys(params).sort().map(k => this._aliPct(k) + '=' + this._aliPct(params[k])).join('&');
+    /* 3. 签名：StringToSign = GET&%2F&percentEncode(canon)，HMAC-SHA1(secret + '&') */
+    const stringToSign = 'GET&%2F&' + this._aliPct(canon);
+    const sign = this._b64(await this._hmac('SHA-1', akSecret + '&', stringToSign));
+    const url = 'https://mt.aliyuncs.com/?' + canon + '&Signature=' + this._aliPct(sign);
+    let j;
+    try {
+      const r = await this.apiFetch(url, { method: 'GET' });
+      j = await r.json();
+    } catch (e) {
+      throw new Error('阿里云机器翻译请求失败（网络不通或未启用本地转发）');
+    }
+    /* 响应可能包一层 TranslateGeneralResponse，也可能平铺 */
+    const resp = (j && j.TranslateGeneralResponse) || j || {};
+    const code = String(resp.Code || '200');
+    if (code !== '200') {
+      const m = this._alimtErr[code] || resp.Message || ('错误码 ' + code);
+      const suffix = /10010|10013/.test(code) ? '（请到阿里云机器翻译控制台开通通用版服务后再试）' : '';
+      throw new Error('阿里云机器翻译 ' + code + '：' + m + suffix);
+    }
+    const text = resp.Data && resp.Data.Translated;
+    return { engine: '阿里云机器翻译', text: String(text || '（无结果）').trim() };
+  },
+
   /* ---------- 火山引擎 · 豆包大模型（只要 API Key） ----------
      API Key：console.volcengine.com/ark → API Key（只需要这一个；形如 ark-<uuid>-xxxx 或纯 UUID）
      模型：留空默认 doubao-seed-translation-250915（专用翻译模型，走 Responses 接口）；
@@ -444,7 +498,7 @@ IR.translate = {
   async run(q, engine) {
     const e = engine || IR.settings.data.api.engine || 'auto';
     if (this._engines.indexOf(e) >= 0) return this[e](q);
-    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 火山方舟 → DeepL → 微软 → LibreTranslate），
+    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 阿里机器翻译 → 火山方舟 → DeepL → 微软 → LibreTranslate），
        最后兜底免费 MyMemory */
     const api = IR.settings.data.api;
     const chain = [];
@@ -454,6 +508,8 @@ IR.translate = {
     if (t.secretId && t.secretKey) chain.push('tencent');
     const al = api.aliyun || {};
     if (al.apiKey) chain.push('aliyun');
+    const am = api.alimt || {};
+    if (am.accessKeyId && am.accessKeySecret) chain.push('alimt');
     const v = api.volcano || {};
     if (v.apiKey) chain.push('volcano');
     const dp = api.deepl || {};

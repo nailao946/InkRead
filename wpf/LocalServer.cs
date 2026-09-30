@@ -31,6 +31,7 @@ namespace InkRead
         private static readonly string[] AllowHosts =
         {
             "openapi.youdao.com",
+            "mt.aliyuncs.com",
             "edge.microsoft.com",
             "api.cognitive.microsofttranslator.com",
             "translate.googleapis.com",

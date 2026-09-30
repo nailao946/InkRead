@@ -29,6 +29,7 @@ IR.settings = {
       youdao: { key: '', apiKeys: '', secret: '' },
       tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
       aliyun: { apiKey: '', model: '' },
+      alimt: { accessKeyId: '', accessKeySecret: '' },
       volcano: { apiKey: '', model: '' },
       deepl: { apiKey: '' },
       ms: { apiKey: '', region: '' },
@@ -58,13 +59,13 @@ for (const algo of ['SHA-256', 'SHA-1']) {
 }
 check('_sha256Hex', (await T._sha256Hex('abc')) === crypto.createHash('sha256').update('abc').digest('hex'));
 
-/* 3. 七家官方/自建引擎已注册 + 未配置时报错可读 */
-const OFFICIAL = [['youdao', '有道'], ['tencent', '腾讯云'], ['aliyun', '阿里云百炼'], ['volcano', '火山方舟'],
+/* 3. 官方/自建引擎已注册 + 未配置时报错可读 */
+const OFFICIAL = [['youdao', '有道'], ['tencent', '腾讯云'], ['aliyun', '阿里云百炼'], ['alimt', '阿里云机器翻译'], ['volcano', '火山方舟'],
   ['deepl', 'DeepL'], ['ms', '微软翻译'], ['libre', 'LibreTranslate']];
 for (const [name, label] of OFFICIAL) {
   check('引擎已注册 ' + name, typeof T[name] === 'function');
 }
-for (const [name, label] of OFFICIAL.slice(1).filter(x => x[0] !== 'libre')) {   /* libretranslate 可零配置用官方实例 */
+for (const [name, label] of OFFICIAL.slice(1).filter(x => x[0] !== 'libre' && x[0] !== 'alimt')) {   /* libretranslate 可零配置用官方实例；alimt 是双字段，单独测 */
   let msg = '';
   try { await T[name]('hello'); } catch (e) { msg = e.message; }
   check('未配置提示 ' + name, msg.indexOf(label) >= 0 && msg.indexOf('未配置') === 0, msg);
@@ -129,6 +130,59 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
 
   T.apiFetch = of;
   IR.settings.data.api.volcano = { apiKey: '', model: '' };
+}
+
+/* 3b3. 阿里云机器翻译（TranslateGeneral，RPC V1 签名，HMAC-SHA1） */
+{
+  const of = T.apiFetch;
+  let vm = '';
+  try { await T.alimt('hello'); } catch (e) { vm = e.message; }
+  check('alimt 未配置提示', vm.indexOf('阿里云机器翻译') >= 0 && vm.indexOf('未配置') === 0 && vm.indexOf('AccessKeyId') >= 0, vm);
+
+  let cap = null;
+  T.apiFetch = async (url, opts) => {
+    cap = { url, method: opts.method };
+    return { ok: true, status: 200, json: async () => ({ TranslateGeneralResponse: { Code: 200, Data: { Translated: '你好' } } }) };
+  };
+  IR.settings.data.api.alimt = { accessKeyId: 'LTAI5tTEST', accessKeySecret: 'testSecret' };
+  const am = await T.alimt('hello world');
+  check('alimt 请求结构（GET + mt.aliyuncs.com + TranslateGeneral + auto→zh）',
+    cap.method === 'GET' &&
+    cap.url.indexOf('https://mt.aliyuncs.com/?') === 0 &&
+    cap.url.indexOf('Action=TranslateGeneral') >= 0 &&
+    cap.url.indexOf('SourceLanguage=auto') >= 0 && cap.url.indexOf('TargetLanguage=zh') >= 0, cap.url);
+  /* 参数按 key 排序（规范化查询串） */
+  const qs1 = cap.url.slice(cap.url.indexOf('?') + 1);
+  const canonPart = qs1.slice(0, qs1.indexOf('&Signature='));
+  const keysSorted = canonPart.split('&').map(kv => kv.slice(0, kv.indexOf('=')));
+  const sortedOk = keysSorted.every((k, i) => i === 0 || keysSorted[i - 1] <= k);
+  check('alimt 参数按 key 排序', sortedOk, keysSorted.join(','));
+  /* 签名独立校验：Node crypto 按 RPC V1 规则重算比对 */
+  const sig = decodeURIComponent(qs1.slice(qs1.indexOf('&Signature=') + '&Signature='.length));
+  const pct = s => encodeURIComponent(String(s)).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  const expect = crypto.createHmac('sha1', 'testSecret&').update('GET&%2F&' + pct(canonPart)).digest('base64');
+  check('alimt RPC V1 签名与 Node crypto 一致', sig === expect, sig + ' vs ' + expect);
+  check('alimt 译文解析（包装结构）', am.engine === '阿里云机器翻译' && am.text === '你好', JSON.stringify(am));
+
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ Code: 200, Data: { Translated: '你好（平铺）' } }) });
+  const am2 = await T.alimt('hello');
+  check('alimt 译文解析（平铺结构）', am2.text === '你好（平铺）', JSON.stringify(am2));
+
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ TranslateGeneralResponse: { Code: 10010, Message: 'no service' } }) });
+  let e2 = '';
+  try { await T.alimt('hello'); } catch (err) { e2 = err.message; }
+  check('alimt 未开通错误给指引', e2.indexOf('10010') >= 0 && e2.indexOf('开通') >= 0, e2);
+
+  /* auto 链：只配 alimt 时走 alimt */
+  IR.settings.data.api.youdao = { key: '', apiKeys: '', secret: '' };
+  IR.settings.data.api.tencent = { secretId: '', secretKey: '', region: 'ap-guangzhou' };
+  IR.settings.data.api.aliyun = { apiKey: '', model: '' };
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ Code: 200, Data: { Translated: '汽车' } }) });
+  const am3 = await T.run('car', 'auto');
+  check('auto 只配 alimt 时走 alimt', am3.engine === '阿里云机器翻译', JSON.stringify(am3));
+
+  T.apiFetch = of;
+  IR.settings.data.api.alimt = { accessKeyId: '', accessKeySecret: '' };
 }
 
 /* 3c. DeepL 按 Key 后缀自动选端点（:fx → api-free 优先） */

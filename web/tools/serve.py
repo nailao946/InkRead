@@ -42,6 +42,7 @@ DEFAULT_PORT = 8642
 # 允许转发的目标域名（与桌面版 LocalServer.cs 保持一致）
 ALLOW_HOSTS = {
     'openapi.youdao.com',
+    'mt.aliyuncs.com',
     'edge.microsoft.com',
     'api.cognitive.microsofttranslator.com',
     'translate.googleapis.com',

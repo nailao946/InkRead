@@ -13,6 +13,7 @@ IR.settingsPage = {
       youdao: c => !!(c.secret && (c.key || c.apiKeys)),
       tencent: c => !!(c.secretId && c.secretKey),
       aliyun: c => !!c.apiKey,
+      alimt: c => !!(c.accessKeyId && c.accessKeySecret),
       volcano: c => !!c.apiKey,
       deepl: c => !!c.apiKey,
       ms: c => !!c.apiKey,
@@ -81,6 +82,7 @@ IR.settingsPage = {
                 <option value="youdao" ${s.api.engine === 'youdao' ? 'selected' : ''}>有道智云</option>
                 <option value="tencent" ${s.api.engine === 'tencent' ? 'selected' : ''}>腾讯云 TMT</option>
                 <option value="aliyun" ${s.api.engine === 'aliyun' ? 'selected' : ''}>阿里云百炼</option>
+                <option value="alimt" ${s.api.engine === 'alimt' ? 'selected' : ''}>阿里云机器翻译</option>
                 <option value="volcano" ${s.api.engine === 'volcano' ? 'selected' : ''}>火山方舟 · 豆包</option>
                 <option value="deepl" ${s.api.engine === 'deepl' ? 'selected' : ''}>DeepL</option>
                 <option value="ms" ${s.api.engine === 'ms' ? 'selected' : ''}>微软翻译（Azure）</option>
@@ -121,6 +123,10 @@ IR.settingsPage = {
               ['API Key', 'apiKey', 'bailian.console.aliyun.com → API-KEY（sk-…）', true],
               ['模型', 'model', '留空用 qwen-plus；可填 qwen-turbo 等']
             ], '只要一个 API Key', ['百炼 API-KEY 页面', 'https://bailian.console.aliyun.com/'])}
+            ${card('alimt', '阿里云机器翻译 · 通用版（AccessKey）', [
+              ['AccessKeyId', 'accessKeyId', 'LTAI 开头；RAM 子账号建议只授权机器翻译', true],
+              ['AccessKeySecret', 'accessKeySecret', '与 AccessKeyId 成对使用', true]
+            ], '需先在机器翻译控制台开通通用版服务（非大模型，经典机器翻译）', ['机器翻译控制台', 'https://mt.console.aliyun.com/'])}
             ${card('volcano', '火山方舟 · 豆包（API Key）', [
               ['API Key', 'apiKey', '形如 ark-xxxx…；console.volcengine.com/ark → API Key 管理', true],
               ['模型', 'model', '留空用 doubao-seed-translation；也可填 ep-… 等其他已开通模型']

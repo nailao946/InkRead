@@ -124,8 +124,11 @@ InkRead.exe
    - 前端出口统一在 `translate.js → apiFetch()`：探测 `/__proxy?ping=1` 成功就走转发，否则直连。
    - 新增引擎时四件事一起改：白名单（三处）、`settings.js` 卡片与 `filled`、`translate.js` 实现、`_engines`/auto 链。
 2. **翻译引擎选型约定**：优先「只要一个 API Key」的服务（阿里百炼、火山方舟、DeepL、微软、LibreTranslate）；
-   不要引入需要 AccessKey/Secret 对或 AK/SK+项目 ID 的接口（已按要求移除百度、华为）。
+   不要引入需要 AccessKey/Secret 对或 AK/SK+项目 ID 的接口（已按要求移除百度、华为）——
+   **例外**：阿里云机器翻译（alimt，AK/SK 对 + RPC V1 签名）是用户 2026-09-30 明确要求加的。
    卡片文案不要写"免费额度"（会过期失真）；被移除的引擎（华为/百度）的介绍文案要一并清干净。
+   火山方舟：翻译模型 doubao-seed-translation-* 只支持 `/api/v3/responses`（translation_options 必填、
+   source 不支持 auto，固定 en→zh）；其他模型/接入点走 chat/completions。Key 形如 ark-<uuid>-尾缀。
 2. **磁盘存档 `GET/POST /__store/{ping,read,write,list,open}`**
    - `root` 参数为空 → 默认「我的文档\InkRead」；相对路径禁止 `..`、盘符。
    - 前端 `filestore.js` 通过**挂钩**实现自动存档：包装 `IR.settings.save`、`IR.vocab.mark/removeWord/bulkMark/bulkRemove`、
