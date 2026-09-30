@@ -122,9 +122,9 @@ IR.settingsPage = {
               ['模型', 'model', '留空用 qwen-plus；可填 qwen-turbo 等']
             ], '只要一个 API Key', ['百炼 API-KEY 页面', 'https://bailian.console.aliyun.com/'])}
             ${card('volcano', '火山方舟 · 豆包（API Key）', [
-              ['API Key', 'apiKey', 'console.volcengine.com/ark → API Key', true],
+              ['API Key', 'apiKey', '带连字符的 UUID；console.volcengine.com/ark → API Key 管理', true],
               ['模型', 'model', '留空用 doubao-seed-1-6；也可填接入点 ID（ep-…）']
-            ], '只要一个 API Key', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
+            ], '只要一个 API Key（Key 是带连字符的 UUID；ep-… 是接入点 ID，填「模型」栏）', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
             ${card('deepl', 'DeepL（API Free / Pro）', [
               ['API Key', 'apiKey', '免费版 Key 以 :fx 结尾；自动选 api-free / api', true]
             ], '只要一个 API Key', ['DeepL 账户 → API 密钥', 'https://www.deepl.com/your-account/keys'])}

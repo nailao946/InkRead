@@ -82,6 +82,26 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
   check(name + ' 只要求填 API Key', /未配置/.test(msg) && msg.indexOf('API Key') >= 0 && msg.indexOf('AccessKey') < 0, msg);
 }
 
+/* 3b2. 火山方舟 Key 清洗 / 格式预检 / Key 类错误提示 */
+{
+  const of = T.apiFetch;
+  let vm = '';
+  IR.settings.data.api.volcano = { apiKey: ' Bearer ep-20240910 ', model: '' };
+  try { await T.volcano('hello'); } catch (e) { vm = e.message; }
+  check('火山方舟：ep- 不能当 Key（误粘 Bearer 前缀也被清掉）', vm.indexOf('接入点 ID') >= 0, vm);
+  IR.settings.data.api.volcano = { apiKey: 'sk-not-ark-key', model: '' };
+  vm = '';
+  try { await T.volcano('hello'); } catch (e) { vm = e.message; }
+  check('火山方舟：非 UUID Key 提示格式', vm.indexOf('UUID') >= 0 && vm.indexOf('sk-') >= 0, vm);
+  IR.settings.data.api.volcano = { apiKey: '123e4567-e89b-12d3-a456-426614174000', model: '' };
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ error: { message: 'The API key format is incorrect. Request id: x' } }) });
+  vm = '';
+  try { await T.volcano('hello'); } catch (e) { vm = e.message; }
+  check('火山方舟：Key 类错误给专属提示（不误导去改模型）', vm.indexOf('Key 无效') >= 0 && vm.indexOf('UUID') >= 0 && vm.indexOf('模型不存在') < 0, vm);
+  T.apiFetch = of;
+  IR.settings.data.api.volcano = { apiKey: '', model: '' };
+}
+
 /* 3c. DeepL 按 Key 后缀自动选端点（:fx → api-free 优先） */
 let deeplUrls = [];
 const origFetchApi = T.apiFetch;

@@ -73,6 +73,14 @@ IR.translate = {
     return this._tencentCall(q, sid, skey, (c.region || 'ap-guangzhou').trim());
   },
 
+  /* ---------- Key 清洗：去掉误粘的 Bearer 前缀 / 引号 / 首尾空白 ---------- */
+  _cleanKey(s) {
+    return String(s || '').trim()
+      .replace(/^bearer\s+/i, '')
+      .replace(/^["'`]+/, '').replace(/["'`]+$/, '')
+      .trim();
+  },
+
   /* ---------- 大模型翻译共用实现（OpenAI 兼容端点：阿里云百炼 / 火山方舟） ----------
      两家都只要一个 API Key，请求体与响应结构一致（chat/completions）。 */
   async _chatTranslate(opts) {
@@ -98,6 +106,12 @@ IR.translate = {
     }
     if (j.error) {
       const m = j.error.message || j.error.code || JSON.stringify(j.error);
+      const code = String(j.error.code || '');
+      /* Key 类错误（格式不对 / 无效 / 认证失败）给 Key 专属提示，不再误导用户去改模型 */
+      if (/format is incorrect|invalidapikey|authentication|invalid api key|incorrect api key/i.test(m + ' ' + code)) {
+        throw new Error(opts.label + '：' + m + '（Key 无效或格式不对。' +
+          (opts.keyHint || '请核对 API Key 是否完整、是否来自该平台') + '）');
+      }
       throw new Error(opts.label + '：' + m +
         '（若提示模型不存在/未开通，请把设置里的「模型」改成你已开通的模型名或接入点 ID）');
     }
@@ -110,11 +124,12 @@ IR.translate = {
      不需要 AccessKey/Secret，也不需要单独开通机器翻译产品。 */
   async aliyun(q) {
     const c = IR.settings.data.api.aliyun || {};
-    const key = (c.apiKey || '').trim();
+    const key = this._cleanKey(c.apiKey);
     if (!key) throw new Error('未配置阿里云百炼：设置 → 翻译接口 填 API Key');
     return this._chatTranslate({
       url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-      apiKey: key, model: c.model, q, label: '阿里云百炼', defModel: 'qwen-plus'
+      apiKey: key, model: c.model, q, label: '阿里云百炼', defModel: 'qwen-plus',
+      keyHint: '百炼 Key 以 sk- 开头，在 bailian.console.aliyun.com → API-KEY 管理 复制；其他平台的 Key 不能混用'
     });
   },
 
@@ -123,11 +138,19 @@ IR.translate = {
      模型：填你在方舟已开通的模型名（如 doubao-…）或推理接入点 ID（ep-…），留空用默认。 */
   async volcano(q) {
     const c = IR.settings.data.api.volcano || {};
-    const key = (c.apiKey || '').trim();
+    const key = this._cleanKey(c.apiKey);
     if (!key) throw new Error('未配置火山方舟：设置 → 翻译接口 填 API Key');
+    /* 客户端格式预检：方舟 API Key 是带连字符的 UUID，错得离谱时直接给出可操作提示 */
+    if (/^ep-/i.test(key)) throw new Error('火山方舟：你填的是「接入点 ID」（ep-…），那是填在「模型」一栏的，不能当 API Key。' +
+      '请到 console.volcengine.com/ark → API Key 管理，创建并复制 API Key（一串带连字符的 UUID）');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key))
+      throw new Error('火山方舟：API Key 格式不对——方舟的 Key 是一串带连字符的 UUID（形如 xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx）。' +
+        'sk- 开头的是阿里百炼的 Key，AKLT 开头的是访问密钥，都不能用在这里。' +
+        '请到 console.volcengine.com/ark → API Key 管理重新复制');
     return this._chatTranslate({
       url: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-      apiKey: key, model: c.model, q, label: '火山方舟', defModel: 'doubao-seed-1-6-250615'
+      apiKey: key, model: c.model, q, label: '火山方舟', defModel: 'doubao-seed-1-6-250615',
+      keyHint: '方舟 Key 是带连字符的 UUID，在 console.volcengine.com/ark → API Key 管理复制；ep-… 是接入点 ID（填「模型」栏），不能当 Key'
     });
   },
 
