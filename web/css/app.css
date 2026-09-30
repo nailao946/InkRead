@@ -823,6 +823,41 @@ body.toc-open .toc-panel { transform: translateX(0); }
 .sg-bar i.st-done { background: linear-gradient(90deg, #3f9c6a, #6fd39a); }
 .sg-bar i.st-reading { background: linear-gradient(90deg, #d9922f, #FAC775); }
 .sg-bar i.st-unread { background: var(--text-3); opacity: .45; }
+/* 分组文件夹卡（手机桌面式）：封面区改为 2×2 迷你封面预览 */
+.folder-cell .folder-cover { display: flex; align-items: center; justify-content: center; }
+.folder-icons {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  width: 78%; aspect-ratio: 3 / 4; padding: 6px;
+  border-radius: 7px; background: var(--bg); border: 1px solid var(--border-soft);
+}
+.folder-icons img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+.folder-tile {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; font-weight: 600; color: var(--text-2);
+  background: var(--bg-hover); border-radius: 4px;
+}
+.folder-emoji {
+  position: absolute; left: 6px; top: 6px; font-size: .95rem;
+  background: var(--panel); border: 1px solid var(--border-soft);
+  border-radius: 6px; padding: 1px 4px; line-height: 1.3;
+}
+.folder-cell .sg-title { font-weight: 600; }
+/* 全屏拖放遮罩：拖文件到页面任意位置时出现 */
+#dropOverlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;                       /* 关键：不拦截 drop 事件 */
+}
+#dropOverlay[hidden] { display: none; }
+#dropOverlay .drop-overlay-box {
+  border: 3px dashed var(--accent); border-radius: 18px;
+  background: var(--panel); padding: 2.2rem 3.2rem; text-align: center;
+  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+}
+#dropOverlay .drop-overlay-icon { font-size: 2.6rem; margin-bottom: .5rem; }
+#dropOverlay .drop-overlay-sub { font-size: .8rem; color: var(--text-3); margin-top: .35rem; }
 .sg-pct { font-size: .72rem; color: var(--text-3); }
 .sg-more {
   position: absolute; top: .3rem; left: .3rem; width: 24px; height: 21px; border: none;

@@ -15,6 +15,8 @@ const makeEl = (tag = 'div') => {
     setAttribute() {}, appendChild(c) { this.children.push(c); return c; },
     addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); },
     closest() { return null; }, click() {}, remove() {},
+    querySelector(sel) { return (store[sel] = store[sel] || makeEl()); },
+    querySelectorAll() { return []; },
     classList: { add() {}, remove() {}, toggle() {} }
   };
   return el;
@@ -23,7 +25,7 @@ const store = {};
 globalThis.window = globalThis;
 globalThis.addEventListener = () => {};
 globalThis.document = {
-  addEventListener() {},
+  addEventListener() {}, dispatchEvent() {},
   createElement: t => makeEl(t),
   querySelector: sel => (store[sel] = store[sel] || makeEl()),
   querySelectorAll: () => []
@@ -116,7 +118,7 @@ await new Promise(r => setTimeout(r, 3400));
 const b2 = await IR.bookStore.get('b2');
 check('进度 100% 自动标为已读', b2.readState === 'done' && !!b2.finishedAt);
 
-/* 8. 全部视图：分组条 + 分组框（微信读书式） */
+/* 8. 全部视图：手机桌面式 —— 分组＝文件夹卡 + 未分组的书平铺在同一宫格 */
 R.shelfFilter = 'all';
 IR.settings.data.shelf.groups = [{ id: 'gx', name: '待读', icon: '📚', createdAt: 1 }];
 await IR.bookStore.put({ id: 'b3', title: 'Boundless', author: 'R. A. Salvatore', fmt: 'MOBI', wordCount: 117743, progress: 0.42, addedAt: Date.now(), grpId: 'gx', stats: { level: 2, levelText: '适中', tier: 'i+1 理想区' } });
@@ -125,17 +127,16 @@ store['#shelfGroups'] = makeEl();
 store['#shelfCrumb'] = makeEl();
 store['#shelfEmptyActions'] = makeEl();
 await R.initShelf();
-const frames = store['#shelfList'].innerHTML;
+const grid2 = store['#shelfList'].innerHTML;
 const bar1 = store['#shelfGroups'].innerHTML;
 check('分组条保留（全部/未分组/自定义/新建）',
   bar1.indexOf('全部') >= 0 && bar1.indexOf('未分组') >= 0 && bar1.indexOf('📚 待读') >= 0 && bar1.indexOf('新建分组') >= 0);
-check('全部视图渲染分组框', /group-frame/.test(frames) && /frame-row/.test(frames));
-check('分组框标题带图标与数量', frames.indexOf('📚 待读') >= 0 && /frame-count">1 本/.test(frames));
-check('未分组框存在', frames.indexOf('未分组') >= 0);
-check('框内卡片为紧凑型', /book-card compact/.test(frames));
-check('卡片含状态徽章', /book-state (done|reading|unread)/.test(frames));
-check('卡片含进度百分比', frames.indexOf('已读 <b>42%</b>') >= 0);
-check('卡片含难度徽标', /diff-badge d2/.test(frames) && frames.indexOf('适中') >= 0);
+check('全部视图是封面宫格（统一网格）', /class="shelf-grid"/.test(grid2) && /sg-cell/.test(grid2));
+check('分组渲染为文件夹卡（占一个书位）', /folder-cell/.test(grid2) && /folder-icons/.test(grid2) && /data-goto="gx"/.test(grid2));
+check('文件夹卡有图标徽章与数量', grid2.indexOf('📚') >= 0 && /sg-pct">1 本/.test(grid2) && /data-folder-menu="gx"/.test(grid2));
+check('文件夹卡有分组菜单按钮', /data-folder-menu="gx"/.test(grid2));
+check('未分组的书平铺在网格中', /data-id="b1"/.test(grid2) && /data-id="b2"/.test(grid2));
+check('书卡含状态徽章与进度百分比', /book-state (done|reading|unread)/.test(grid2) && /sg-pct">42%/.test(grid2));
 check('全部视图隐藏面包屑', store['#shelfCrumb'].hidden === true);
 
 /* 9. 分组视图：封面宫格 */
@@ -189,6 +190,71 @@ check('新建分组可带图标', gi.icon === '🚀' && R.groupIcon(gi.id) === '
 R.updateGroup(gi.id, '改名了', '');
 check('可改名称与清空图标', R.groupName(gi.id) === '改名了' && R.groupIcon(gi.id) === '');
 check('可选图标列表含"无图标"项', R.GROUP_ICONS[0] === '' && R.GROUP_ICONS.length > 5);
+
+/* 12. 点词即入生词本 + 释义回存词表（不再消耗翻译接口） */
+{
+  globalThis.innerWidth = 1200; globalThis.innerHeight = 800;
+  /* 加载真实 vocab.js（覆盖前面的桩） */
+  new Function('window', readFileSync(path.join(ROOT, 'js/vocab.js'), 'utf8'))(globalThis);
+  IR.vocabStore = {
+    _m: new Map(),
+    async get(w) { return this._m.get(w) || null; },
+    async put(e) { this._m.set(e.word, e); this._puts = (this._puts || 0) + 1; },
+    async remove(w) { this._m.delete(w); },
+    async getAll() { return Array.from(this._m.values()); }
+  };
+  await IR.vocab.reload();
+  IR.dict = { lookup: async () => ({ phonetic: 'rʌn', pos: 'v.', meaning: '跑；运转' }) };
+  let transCalls = 0;
+  IR.translate = { run: async () => { transCalls++; return { engine: '测试引擎', text: '跑（译文）' }; } };
+  IR.tts = { voices: [], speak() {} };
+  IR.settings.data.tts = { autoSpeak: false, voiceURI: '', rate: 1 };
+  IR.settings.data.reader = {};
+  IR.vocab.statusMap = new Map(IR.vocab.cache.map(e => [e.word, e.status]));
+
+  const popup = makeEl();
+  popup.hidden = true;
+  popup.style = {};
+  popup.dataset = {};
+  const span = makeEl();
+  span.dataset = { w: 'running', k: 'run' };
+  span.getBoundingClientRect = () => ({ left: 10, top: 10, right: 20, bottom: 20, width: 10 });
+
+  /* 首次点词：自动入生词本 */
+  R._openPopup(span, popup);
+  await new Promise(r => setTimeout(r, 60));
+  let e1 = IR.vocab.cache.find(e => e.word === 'run');
+  check('点词即入生词本（status=new）', !!e1 && e1.status === 'new', JSON.stringify(e1 && { s: e1.status }));
+  check('词典释义回存词表', e1 && e1.meaning.indexOf('跑') >= 0, e1 && e1.meaning);
+  check('首次点词消耗一次翻译', transCalls === 1, 'transCalls=' + transCalls);
+  const puts1 = IR.vocabStore._puts;
+
+  /* 再次点词：词表已有中文，不再调翻译接口、不再重复入库 */
+  popup.hidden = true;
+  popup.dataset = {};
+  R._openPopup(span, popup);
+  await new Promise(r => setTimeout(r, 60));
+  check('再点同一词不再消耗翻译', transCalls === 1, 'transCalls=' + transCalls);
+  check('再点同一词不再重复入库', IR.vocabStore._puts === puts1, 'puts=' + (IR.vocabStore._puts - puts1));
+  const r2 = await R._translateWord('running');
+  check('_translateWord 命中词表', r2.engine === '词表' && r2.text.indexOf('跑') >= 0, JSON.stringify(r2));
+
+  /* 标记为在学：释义保留 */
+  await IR.vocab.mark('run', 'running', 'learning');
+  const e2 = IR.vocab.cache.find(e => e.word === 'run');
+  check('改标在学后释义保留', e2.status === 'learning' && e2.meaning.indexOf('跑') >= 0, JSON.stringify(e2));
+
+  /* fillMeaning 不覆盖已有释义 */
+  await IR.vocab.fillMeaning('run', '别的翻译');
+  const e3 = IR.vocab.cache.find(e => e.word === 'run');
+  check('fillMeaning 不覆盖已有释义', e3.meaning.indexOf('跑') >= 0, e3.meaning);
+
+  /* 生词本（new）在阅读里按生词样式着色 */
+  IR.vocab.statusMap.set('run', 'new');
+  check('生词本词条按生词样式（w-unknown）', R._wordStatus('running').status === 'unknown' && R._wordStatus('running').key === 'run');
+  IR.vocab.statusMap.set('run', 'learning');
+  check('在学词条样式 w-learning', R._wordStatus('running').status === 'learning');
+}
 
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);

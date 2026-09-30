@@ -38,6 +38,16 @@ IR.vocab = {
     document.dispatchEvent(new CustomEvent('ir:vocabchange'));
   },
 
+  /* 释义回填：仅当词条存在且释义为空时写入（词典/翻译结果回存词表，不覆盖已有内容）。
+     配合「点词即入生词本」：第二次点同一词直接从词表取中文，不再消耗翻译接口 */
+  async fillMeaning(word, meaning) {
+    const m = String(meaning || '').trim();
+    if (!m) return;
+    const old = this.cache.find(e => e.word === word);
+    if (!old || (old.meaning && old.meaning.trim())) return;
+    await this.mark(word, old.display, old.status, m);
+  },
+
   /* 批量标记（M2）：一次事务写入 + 重建 statusMap */
   async bulkMark(words, status) {
     const now = Date.now();

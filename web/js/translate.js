@@ -278,8 +278,10 @@ IR.translate = {
      源语言不填 = 自动检测；TextList 单次总长 ≤5000 字符。 */
   async volmt(q) {
     const c = IR.settings.data.api.volmt || {};
-    const ak = this._cleanKey(c.accessKeyId), sk = this._cleanKey(c.accessKeySecret);
+    let ak = this._cleanKey(c.accessKeyId), sk = this._cleanKey(c.accessKeySecret);
     if (!ak || !sk) throw new Error('未配置火山机器翻译：设置 → 翻译接口 填 AccessKey / SecretKey');
+    /* 填反了自动纠正：火山 AccessKeyId 以 AKLT 开头，Secret 常以 == 结尾 */
+    if (/^AKLT/.test(sk) && !/^AKLT/.test(ak)) { const t = ak; ak = sk; sk = t; }
     const host = 'translate.volcengineapi.com', region = 'cn-north-1', service = 'translate';
     const qs = 'Action=TranslateText&Version=2020-06-01';
     const body = JSON.stringify({ TargetLanguage: 'zh', TextList: [q] });   /* SourceLanguage 留空 = 自动检测 */
@@ -293,12 +295,12 @@ IR.translate = {
     const canonicalRequest = ['POST', '/', qs, canonicalHeaders, signedHeaders, await this._sha256Hex(body)].join('\n');
     const scope = date + '/' + region + '/' + service + '/request';
     const stringToSign = ['HMAC-SHA256', xDate, scope, await this._sha256Hex(canonicalRequest)].join('\n');
-    /* 密钥派生：每层 HMAC 的 key 是上一层的 hex 字符串 */
+    /* 密钥派生链（与 AWS SigV4 / 腾讯 TC3 同思路）：每层 HMAC 的 key 是上一层的原始字节 */
     const kDate = await this._hmac('SHA-256', sk, date);
-    const kRegion = await this._hmac('SHA-256', this._hex(kDate), region);
-    const kService = await this._hmac('SHA-256', this._hex(kRegion), service);
-    const kSigning = await this._hmac('SHA-256', this._hex(kService), 'request');
-    const signature = this._hex(await this._hmac('SHA-256', this._hex(kSigning), stringToSign));
+    const kRegion = await this._hmac('SHA-256', kDate, region);
+    const kService = await this._hmac('SHA-256', kRegion, service);
+    const kSigning = await this._hmac('SHA-256', kService, 'request');
+    const signature = this._hex(await this._hmac('SHA-256', kSigning, stringToSign));
     const headers = {
       'Content-Type': 'application/json',
       'X-Date': xDate,
@@ -316,7 +318,8 @@ IR.translate = {
       const code = String(meta.Error.Code || ''), m = meta.Error.Message || code;
       const hint = /415|not.*language|unsupported/i.test(code + ' ' + m) ? '（该语向不支持，检查源文本语言）'
         : /429/.test(code) ? '（请求过于频繁，请稍后再试）'
-        : /signature|sign/i.test(code + ' ' + m) ? '（签名失败：请核对 AccessKey / SecretKey 是否正确）'
+        : /signature|sign/i.test(code + ' ' + m) ? '（签名失败：请核对 AccessKey / SecretKey 是否正确；火山 AccessKey 以 AKLT 开头，别和 Secret 填反）'
+        : /unsynchronized/i.test(m) ? '（账号状态未同步：通常是机器翻译服务未开通或刚开通还没生效，到火山引擎控制台开通后等几分钟再试）'
         : /open|auth|permission|account/i.test(code + ' ' + m) ? '（可能是服务未开通或账号无权限：到火山引擎控制台开通机器翻译）'
         : '';
       throw new Error('火山机器翻译 ' + code + '：' + m + hint);

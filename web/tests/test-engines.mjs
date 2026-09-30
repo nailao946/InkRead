@@ -213,23 +213,29 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
     cap.url === 'https://translate.volcengineapi.com/?Action=TranslateText&Version=2020-06-01' &&
     /"TargetLanguage":"zh"/.test(cap.body) && /"TextList":\["Hello world"\]/.test(cap.body), cap.url + ' | ' + cap.body);
   check('volmt 译文解析', rv.engine === '火山机器翻译' && rv.text === '你好世界', JSON.stringify(rv));
-  /* V4 签名交叉验证：用 Node crypto 按官方文档规则独立重算 */
+  /* V4 签名交叉验证：用 Node crypto 按官方文档规则独立重算（密钥链每层用原始字节作 key） */
   const xDate = cap.headers['X-Date'];
-  const H = (k, m) => crypto.createHmac('sha256', k).update(m).digest();
-  const hexB = b => Buffer.from(b).toString('hex');
+  const H = (k, m) => crypto.createHmac('sha256', k).update(m).digest();   /* k 可为字符串或 Buffer */
   const kDate = H('skTest', xDate.slice(0, 8));
-  const kRegion = H(hexB(kDate), 'cn-north-1');
-  const kService = H(hexB(kRegion), 'translate');
-  const kSigning = H(hexB(kService), 'request');
+  const kRegion = H(kDate, 'cn-north-1');
+  const kService = H(kRegion, 'translate');
+  const kSigning = H(kService, 'request');
   const canonical = ['POST', '/', 'Action=TranslateText&Version=2020-06-01',
     'host:translate.volcengineapi.com\nx-date:' + xDate + '\n', 'host;x-date',
     crypto.createHash('sha256').update(cap.body).digest('hex')].join('\n');
   const sts = ['HMAC-SHA256', xDate, xDate.slice(0, 8) + '/cn-north-1/translate/request',
     crypto.createHash('sha256').update(canonical).digest('hex')].join('\n');
-  const expectSig = crypto.createHmac('sha256', hexB(kSigning)).update(sts).digest('hex');
+  const expectSig = crypto.createHmac('sha256', kSigning).update(sts).digest('hex');
   const sig = ((cap.headers['Authorization'] || '').match(/Signature=([0-9a-f]+)/) || [])[1];
   check('volmt V4 签名与 Node crypto 一致', sig === expectSig, sig + ' vs ' + expectSig);
   check('volmt Authorization 头格式', /^HMAC-SHA256 Credential=AKTEST\/\d{8}\/cn-north-1\/translate\/request, SignedHeaders=host;x-date, Signature=[0-9a-f]+$/.test(cap.headers['Authorization']), cap.headers['Authorization'].slice(0, 60));
+
+  /* 凭证填反自动纠正：AKLT 开头的一定是 AccessKey */
+  cap = null;
+  IR.settings.data.api.volmt = { accessKeyId: 'TmpSecretValue==', accessKeySecret: 'AKLT-real-key-id' };
+  await T.volmt('hi');
+  check('volmt 凭证填反自动纠正', cap && cap.headers.Authorization.indexOf('Credential=AKLT-real-key-id/') >= 0,
+    cap ? cap.headers.Authorization.slice(0, 40) : 'no capture');
 
   /* 错误映射：ResponseMetadata.Error */
   T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ ResponseMetadata: { Error: { Code: '415', Message: 'unsupported language pair' } } }) });

@@ -249,75 +249,50 @@ IR.reader = {
   },
 
   /* ---------- 书架 ---------- */
-  /* 书卡（variant：full＝分组视图网格，compact＝分组框内横排） */
-  _cardHtml(b, variant) {
-    const st = this.readStateOf(b);
-    const pct = Math.round((b.progress || 0) * 100);
-    const cover = b.cover
-      ? `<img class="book-cover-img" src="${b.cover}" alt="">`
-      : `<div class="book-cover-img book-cover-fallback">${IR.esc((b.title || '?').slice(0, 1))}</div>`;
-    const diff = (b.stats && b.stats.level)
-      ? `<span class="diff-badge d${b.stats.level}" title="难度：${IR.esc(b.stats.levelText)} · ${IR.esc(b.stats.tier || '')}">${IR.esc(b.stats.levelText)}</span>` : '';
+  /* 分组文件夹卡（手机桌面式）：占一个书卡位，封面区 2×2 预览组内前几本，点开进入分组 */
+  _folderCellHtml(g, books) {
+    const previews = books.slice(0, 4).map(b => b.cover
+      ? `<img src="${b.cover}" alt="">`
+      : `<span class="folder-tile">${IR.esc((b.title || '?').slice(0, 1))}</span>`).join('');
+    const avg = books.length ? Math.round(books.reduce((s, b) => s + (b.progress || 0), 0) / books.length * 100) : 0;
+    const st = !books.length ? 'unread'
+      : books.some(b => this.readStateOf(b) === 'reading') ? 'reading'
+      : books.every(b => this.readStateOf(b) === 'done') ? 'done' : 'unread';
     return `
-      <div class="book-card ${variant}" data-id="${b.id}">
-        <div class="book-cover">
-          ${cover}
-          <span class="book-state ${st}" title="阅读状态：${this.readStateText[st]}">${this.readStateText[st]}</span>
+      <div class="sg-cell folder-cell" data-goto="${g.id}" title="打开分组：${IR.esc(g.name)}">
+        <div class="sg-cover folder-cover">
+          <div class="folder-icons">${previews}</div>
+          ${g.icon ? `<span class="folder-emoji">${g.icon}</span>` : ''}
+          <span class="book-state ${st}">${books.length ? this.readStateText[st] : '空'}</span>
+          <button class="sg-more" data-folder-menu="${g.id}" title="重命名 / 图标 / 删除">⋯</button>
         </div>
-        <div class="book-body">
-          <div class="book-title" title="${IR.esc(b.title)}">${IR.esc(b.title)}</div>
-          <div class="book-author" title="${IR.esc(b.author || '未知作者')}">${b.author ? IR.esc(b.author) : '未知作者'}</div>
-          <div class="book-meta">
-            <span class="fmt-badge">${IR.esc(b.fmt || '')}</span>
-            <span>${(b.wordCount || 0).toLocaleString()} 词</span>
-            ${diff}
-          </div>
-          <div class="book-prog st-${st}"><i style="width:${pct}%"></i></div>
-          <div class="book-prog-text">
-            <span class="bp-pct">已读 <b>${pct}%</b></span>
-            <span class="book-detail-hint" data-detail>详情 ›</span>
-          </div>
-        </div>
-        ${variant === 'full' ? '<button class="book-more" data-detail title="详情 / 分组 / 删除">⋯</button>' : ''}
+        <div class="sg-title">${IR.esc(g.name)}</div>
+        <div class="sg-bar"><i class="st-${st}" style="width:${avg}%"></i></div>
+        <div class="sg-pct">${books.length} 本</div>
       </div>`;
-  },
-  /* 分组框（微信读书式）：标题行 + 横排书卡 */
-  _groupFrameHtml(g, books) {
-    const title = g ? ((g.icon ? g.icon + ' ' : '') + IR.esc(g.name)) : '未分组';
-    return `
-      <section class="group-frame">
-        <div class="frame-head">
-          <span class="frame-title"${g ? ` data-goto="${g.id}"` : ''}>${title}</span>
-          <span class="frame-count">${books.length} 本</span>
-          ${g ? `<button class="frame-more" data-folder-menu="${g.id}" title="重命名 / 图标 / 删除">⋯</button>` : ''}
-          ${books.length > 4 ? `<button class="frame-all" data-goto="${g.id}">查看全部 ›</button>` : ''}
-        </div>
-        ${books.length
-          ? `<div class="frame-row">${books.map(b => this._cardHtml(b, 'compact')).join('')}</div>`
-          : '<div class="frame-empty">这个分组还没有书 —— 在书籍「详情」里移入</div>'}
-      </section>`;
   },
 
   /* 封面宫格（点进分组后看到的那种） */
+  _coverCellHtml(b) {
+    const st = this.readStateOf(b);
+    const pct = Math.round((b.progress || 0) * 100);
+    const cover = b.cover
+      ? `<img class="sg-cover-img" src="${b.cover}" alt="">`
+      : `<div class="sg-cover-img book-cover-fallback">${IR.esc((b.title || '?').slice(0, 1))}</div>`;
+    return `
+      <div class="sg-cell" data-id="${b.id}" title="${IR.esc(b.title)}">
+        <div class="sg-cover">
+          ${cover}
+          <span class="book-state ${st}">${this.readStateText[st]}</span>
+          <button class="sg-more" data-detail title="详情 / 分组 / 删除">⋯</button>
+        </div>
+        <div class="sg-title">${IR.esc(b.title)}</div>
+        <div class="sg-bar"><i class="st-${st}" style="width:${pct}%"></i></div>
+        <div class="sg-pct">${pct}%</div>
+      </div>`;
+  },
   _coverGridHtml(books) {
-    return `<div class="shelf-grid">${books.map(b => {
-      const st = this.readStateOf(b);
-      const pct = Math.round((b.progress || 0) * 100);
-      const cover = b.cover
-        ? `<img class="sg-cover-img" src="${b.cover}" alt="">`
-        : `<div class="sg-cover-img book-cover-fallback">${IR.esc((b.title || '?').slice(0, 1))}</div>`;
-      return `
-        <div class="sg-cell" data-id="${b.id}" title="${IR.esc(b.title)}">
-          <div class="sg-cover">
-            ${cover}
-            <span class="book-state ${st}">${this.readStateText[st]}</span>
-            <button class="sg-more" data-detail title="详情 / 分组 / 删除">⋯</button>
-          </div>
-          <div class="sg-title">${IR.esc(b.title)}</div>
-          <div class="sg-bar"><i class="st-${st}" style="width:${pct}%"></i></div>
-          <div class="sg-pct">${pct}%</div>
-        </div>`;
-    }).join('')}</div>`;
+    return `<div class="shelf-grid">${books.map(b => this._coverCellHtml(b)).join('')}</div>`;
   },
 
   async initShelf() {
@@ -347,12 +322,16 @@ IR.reader = {
       '<button class="group-new" data-group-new>＋ 新建分组</button>';
 
     if (this.shelfFilter === 'all') {
-      /* 全部视图：分组框（每框一行，框内横排封面） */
-      const frames = groups.map(g => this._groupFrameHtml(g, books.filter(b => b.grpId === g.id)));
+      /* 全部视图（手机桌面式）：分组＝文件夹卡（占一个书位，点开进入分组），
+         未分组的书像散落的 App 一样直接平铺在同一宫格 */
+      const cells = [];
+      groups.forEach(g => cells.push(this._folderCellHtml(g, books.filter(b => b.grpId === g.id))));
       const un = books.filter(b => !b.grpId);
-      if (un.length || !groups.length) frames.push(this._groupFrameHtml(null, un));
-      listEl.className = 'shelf-frames';
-      listEl.innerHTML = frames.join('');
+      un.forEach(b => cells.push(this._coverCellHtml(b)));
+      listEl.className = 'shelf-grid-wrap';
+      listEl.innerHTML = cells.length
+        ? `<div class="shelf-grid">${cells.join('')}</div>`
+        : `<div class="book-empty">书架空空如也<br><span style="font-size:.82rem">导入一本英文电子书开始阅读，或点下方按钮先看示例</span></div>`;
     } else {
       /* 分组视图（含"未分组"）：封面宫格 */
       const g = this.shelfFilter === '__none__' ? null : groups.find(x => x.id === this.shelfFilter);
@@ -652,14 +631,33 @@ IR.reader = {
     IR.$('#btnImportBook').addEventListener('click', () => input.click());
     input.addEventListener('change', () => { this.importBooks(input.files); input.value = ''; });
     IR.$('#btnDemo').addEventListener('click', () => this.importDemo());
-    const dz = IR.$('#dropzone');
-    ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
-    ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
-    dz.addEventListener('drop', e => {
+    /* 拖拽导入：整个页面任意位置都能放（不再局限 dropzone 小区域） */
+    const overlay = IR.$('#dropOverlay');
+    const hasFiles = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') >= 0);
+    let dragDepth = 0;
+    window.addEventListener('dragenter', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth++;
+      if (overlay) overlay.hidden = false;
+    });
+    window.addEventListener('dragover', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();                       /* 必须 preventDefault，drop 才会触发 */
+    });
+    window.addEventListener('dragleave', e => {
+      if (!hasFiles(e)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth && overlay) overlay.hidden = true;
+    });
+    window.addEventListener('drop', e => {
+      if (!hasFiles(e)) { e.preventDefault(); return; }
+      e.preventDefault();
+      dragDepth = 0;
+      if (overlay) overlay.hidden = true;
       const files = Array.from(e.dataTransfer.files || []);
       if (files.length) this.importBooks(files);
     });
-    ['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => e.preventDefault()));
     IR.$('#btnBackShelf').addEventListener('click', () => { this.speech.stop(); this.showShelf(); });
     const findBtn = IR.$('#btnFindBook');
     if (findBtn) findBtn.addEventListener('click', () => this.openFindBook());
@@ -702,14 +700,6 @@ IR.reader = {
     IR.$('#readingView').hidden = false;
     IR.$('#tocPanel').hidden = true;
     IR.$('#readingTitle').textContent = book.title;
-    this._wordStatus = word => {
-      const map = IR.vocab.statusMap;
-      for (const c of IR.lemmas(word)) {
-        const st = map && map.get(c);
-        if (st) return { key: c, status: st };
-      }
-      return { key: word.toLowerCase(), status: 'unknown' };
-    };
     this._renderToc();
     this._appendBlocks();
     this._updateStats();
@@ -769,10 +759,21 @@ IR.reader = {
        共 ${c.total.toLocaleString()} 词`;
   },
 
+  _wordStatus(word) {
+    const map = IR.vocab.statusMap;
+    for (const c of IR.lemmas(word)) {
+      const st = map && map.get(c);
+      /* 生词本（new）按「生词」样式着色，与未入库的 unknown 一致 */
+      if (st) return { key: c, status: st === 'new' ? 'unknown' : st };
+    }
+    return { key: word.toLowerCase(), status: 'unknown' };
+  },
+
   _restyleWord(key, status) {
     IR.$$(`.article .w[data-k="${CSS.escape(key)}"]`).forEach(sp => {
       sp.classList.remove('w-unknown', 'w-learning', 'w-known');
-      sp.classList.add('w-' + status);
+      /* 'new'（生词本）用生词样式 */
+      sp.classList.add('w-' + (status === 'new' ? 'unknown' : status));
     });
   },
 
@@ -996,11 +997,12 @@ IR.reader = {
         try {
           const r = await this._translateWord(word);
           box.innerHTML = `<b>${IR.esc(r.engine)}</b>：` + IR.escLines(r.text);
+          this._persistMeaning(popup, r.text);          /* 译文回存词表，下次点词不再消耗接口 */
         } catch (err) { box.innerHTML = `<span style="color:var(--danger)">${IR.esc(err.message)}</span>`; }
         return;
       }
       if (action === 'new' || action === 'learning' || action === 'known') {
-        await IR.vocab.mark(key, display, action);
+        await IR.vocab.mark(key, display, action, popup.dataset.m || undefined);   /* 带上已查到的中文 */
         this._restyleWord(key, action);
         IR.toast(display + ' → ' + IR.vocab.statusText[action]);
         this._updateAfterMark();
@@ -1013,7 +1015,9 @@ IR.reader = {
     const word = span.dataset.w;
     const key = span.dataset.k || word.toLowerCase();
     const entry = IR.vocab.cache.find(e => e.word === key);
-    const status = entry ? entry.status : 'unknown';
+    /* 点词即入生词本：没入库的词一点就收进生词本（之后可改标在学/已学） */
+    if (!entry) IR.vocab.mark(key, word, 'new');
+    const status = entry ? entry.status : 'new';
     const statusLabel = IR.vocab.statusText[status] || '生词';
     popup.innerHTML = `
       <button class="wp-close" data-op="close">✕</button>
@@ -1040,6 +1044,7 @@ IR.reader = {
     popup.dataset.w = word;
     popup.dataset.k = key;
     popup.dataset.d = word;
+    popup.dataset.m = entry && entry.meaning ? entry.meaning : '';   /* 当前已知的中文释义（标记时随词入库） */
     popup.hidden = false;
     const r = span.getBoundingClientRect();
     const pw = popup.offsetWidth, ph = popup.offsetHeight;
@@ -1051,7 +1056,8 @@ IR.reader = {
     popup.style.top = y + 'px';
     if (IR.settings.data.tts.autoSpeak !== false) IR.tts.speak(word);
 
-    /* M3：异步查询离线词典，查到后填充音标与释义（弹窗可能已关闭，需判空） */
+    /* M3：异步查询离线词典，查到后填充音标与释义（弹窗可能已关闭，需判空）；
+       词典释义同步回存词表，下次点词直接用，不消耗翻译接口 */
     const phonEl = IR.$('[data-phon]', popup);
     const meanEl = IR.$('[data-res]', popup);
     if (phonEl || meanEl) {
@@ -1065,19 +1071,41 @@ IR.reader = {
             html += IR.escLines(res.meaning);
             meanEl.innerHTML = html;
           }
+          if (res.meaning) this._persistMeaning(popup, res.meaning);
         }
         /* 查不到：保留现有占位文案（自动翻译会接着填充译文） */
       }).catch(() => { /* 离线词典查询失败，静默降级 */ });
     }
 
-    /* 自动翻译：点词即出译文（设置里可关）；带内存缓存，避免重复点同一词反复消耗额度 */
-    this._autoTranslate(popup, word);
+    /* 自动翻译：点词即出译文（设置里可关）；词表里已有中文就不再消耗接口 */
+    if (!(entry && entry.meaning)) this._autoTranslate(popup, word);
   },
 
-  /* 在线翻译（内存缓存 300 条，超限整体清空） */
+  /* 释义回填：当前弹窗记一份（标记时随词入库），词表只在空时补写 */
+  _persistMeaning(popup, text) {
+    const t = String(text || '').trim();
+    if (!t) return;
+    if (!popup.dataset.m) popup.dataset.m = t;
+    const key = popup.dataset.k;
+    if (key && IR.vocab.fillMeaning) IR.vocab.fillMeaning(key, t);
+  },
+
+  /* 在线翻译（内存缓存 300 条，超限整体清空）；词表里已有中文的词直接用，不消耗接口 */
   _transCache: new Map(),
   async _translateWord(word) {
     const k = (word || '').toLowerCase();
+    /* 先查词表（含词形还原：running → run），已有释义就不再调翻译接口；词表优先于缓存，保证改词表后即时生效 */
+    if (IR.vocab.cache) {
+      for (const c of IR.lemmas(k)) {
+        const e = IR.vocab.cache.find(x => x.word === c);
+        if (e && e.meaning && e.meaning.trim()) {
+          const r = { engine: '词表', text: e.meaning.trim() };
+          if (this._transCache.size > 300) this._transCache.clear();
+          this._transCache.set(k, r);
+          return r;
+        }
+      }
+    }
     const hit = this._transCache.get(k);
     if (hit) return hit;
     const r = await IR.translate.run(word);
@@ -1096,6 +1124,7 @@ IR.reader = {
       const r = await this._translateWord(word);
       if (popup.hidden || popup.dataset.w !== word) return;   /* 弹窗已关或已换词 */
       box.innerHTML = `<b>${IR.esc(r.engine)}</b>：` + IR.escLines(r.text);
+      this._persistMeaning(popup, r.text);          /* 译文回存词表 */
     } catch (err) {
       if (popup.hidden || popup.dataset.w !== word) return;
       box.innerHTML = `<span class="wp-trans-note" style="color:var(--danger)">${IR.esc(err.message)}</span>`;

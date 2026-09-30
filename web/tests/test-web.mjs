@@ -67,12 +67,12 @@ for (const [name, re] of [
 
 /* 6. 新版前端代码已就位（分组框 / 难度统计 / 图标选择） */
 const readerSrc = readFileSync(path.join(ROOT, 'js/reader.js'), 'utf8');
-check('reader 含分组框渲染', readerSrc.indexOf('_groupFrameHtml') >= 0);
+check('reader 含分组文件夹卡渲染', readerSrc.indexOf('_folderCellHtml') >= 0);
 check('reader 含难度评估（阶梯阅读法）', readerSrc.indexOf('levelOf') >= 0 && readerSrc.indexOf('i+1 理想区') >= 0);
 check('reader 含分组图标选择', readerSrc.indexOf('GROUP_ICONS') >= 0 && readerSrc.indexOf('openGroupDialog') >= 0);
 check('reader 含词频统计', readerSrc.indexOf('computeBookStats') >= 0);
 const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
-check('样式含分组框与加粗进度条', css.indexOf('.group-frame') >= 0 && /\.book-prog \{[^}]*height: 8px/.test(css));
+check('样式含分组文件夹卡与加粗进度条', css.indexOf('.folder-cell') >= 0 && /\.book-prog \{[^}]*height: 8px/.test(css));
 check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\.8em/.test(css) && /\.book-author \{[^}]*height: 1\.35em/.test(css));
 
 /* 7. 设置页挂载冒烟：settings.js 的 mount() 必须不抛错且关键结构齐全

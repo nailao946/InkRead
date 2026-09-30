@@ -125,14 +125,7 @@ await t('lemmas：复数/时态/进行时/比较级', () => {
 });
 
 console.log('— 翻译签名（M2） —');
-await t('MD5 标准向量 + Node crypto 对照（含 UTF-8）', () => {
-  assert.equal(IR.translate.md5(''), 'd41d8cd98f00b204e9800998ecf8427e');
-  assert.equal(IR.translate.md5('hello'), '5d41402abc4b2a76b9719d911017c592');
-  const ref = s => createHash('md5').update(Buffer.from(s, 'utf8')).digest('hex');
-  assert.equal(IR.translate.md5('你好，世界'), ref('你好，世界'));
-  assert.equal(IR.translate.md5('appidword12345secret'), ref('appidword12345secret'));
-  assert.equal(IR.translate.md5('The quick brown fox jumps over the lazy dog'), ref('The quick brown fox jumps over the lazy dog'));
-});
+/* 旧有道 v2 用 MD5，v3 起 translate.js 已全面改用 SHA-256（见 test-engines），MD5 用例随之移除 */
 await t('SHA-256 标准向量（有道 v3 签名格式）', async () => {
   assert.equal(await IR.translate.sha256Hex('hello'), '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
   const long = 'appKey' + 'w'.repeat(30) + '123' + '1700000000' + 'secret';

@@ -258,8 +258,8 @@ namespace InkRead
             "return JSON.stringify({boot:d.dataset.boot||'',stage:d.dataset.stage||''," +
             "bodyLen:(document.body?document.body.innerHTML.length:0)," +
             "scripts:document.scripts.length," +
-            "shelfCards:document.querySelectorAll('#shelfList .book-card').length," +
-            "frames:document.querySelectorAll('.group-frame').length," +
+            "shelfCells:document.querySelectorAll('#shelfList .sg-cell').length," +
+            "folderCells:document.querySelectorAll('#shelfList .folder-cell').length," +
             "newGroupBtn:document.querySelectorAll('#shelfGroups .group-new').length," +
             "store:!!(window.IR&&IR.filestore&&IR.filestore.ready)," +
             "jsErr:e?e.textContent:'',promiseErr:p?p.textContent:''});})()";
