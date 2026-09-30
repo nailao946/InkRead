@@ -63,7 +63,7 @@ IR.settings = {
     youdao: { key: '', apiKeys: '', secret: '' },
     tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
     aliyun: { apiKey: '', model: '' },
-    alimt: { accessKeyId: '', accessKeySecret: '' },
+    alimt: { accessKeyId: '', accessKeySecret: '', edition: 'general', scene: 'social' },
     volcano: { apiKey: '', model: '' },
     volmt: { accessKeyId: '', accessKeySecret: '' },
     deepl: { apiKey: '' },

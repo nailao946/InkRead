@@ -75,6 +75,74 @@ const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
 check('样式含分组框与加粗进度条', css.indexOf('.group-frame') >= 0 && /\.book-prog \{[^}]*height: 8px/.test(css));
 check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\.8em/.test(css) && /\.book-author \{[^}]*height: 1\.35em/.test(css));
 
+/* 7. 设置页挂载冒烟：settings.js 的 mount() 必须不抛错且关键结构齐全
+   （防回归：曾在真机报 "extra is not defined" 而测试全绿——本节补上这层覆盖） */
+{
+  globalThis.window = globalThis;
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+  const fakeEl = () => ({
+    innerHTML: '', textContent: '', value: '', type: 'text', className: '', dataset: {}, style: {},
+    addEventListener() {}, appendChild() {}, removeChild() {}, querySelector: () => fakeEl(), querySelectorAll: () => [],
+    classList: { add() {}, remove() {}, toggle() {} }, closest: () => null, parentElement: null
+  });
+  globalThis.document = {
+    documentElement: { dataset: {}, style: {} },
+    addEventListener() {}, removeEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [],
+    createElement: () => fakeEl(), body: fakeEl()
+  };
+  const els = {};
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const IR = globalThis.IR = {
+    $: (sel) => els[sel] || (els[sel] = fakeEl()),
+    $$: () => [],
+    el: () => fakeEl(),
+    esc,
+    THEMES: [{ id: '0', name: '纸墨', desc: '默认', swatch: {} }],
+    applyTheme() {}, toast() {},
+    tts: { voices: [], speak() {} },
+    filestore: { ready: false, probe: async () => false, storeNow: async () => ({}), restore: async () => ({}), list: async () => [] },
+    settings: {
+      data: {
+        theme: '0', colors: null, tts: { voiceURI: '', rate: 0.9, autoSpeak: true }, storageDir: '', reader: {},
+        api: {
+          engine: 'auto',
+          youdao: { key: '', apiKeys: '', secret: '' },
+          tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
+          aliyun: { apiKey: '', model: '' },
+          alimt: { accessKeyId: '', accessKeySecret: '', edition: 'general', scene: 'social' },
+          volcano: { apiKey: '', model: '' },
+          volmt: { accessKeyId: '', accessKeySecret: '' },
+          deepl: { apiKey: '' }, ms: { apiKey: '', region: '' }, libre: { url: '', apiKey: '' },
+          proxy: { on: false, url: '' }
+        }
+      },
+      save() {}
+    },
+    translate: {
+      AUTO_ENGINES: ['youdao', 'aliyun', 'alimt', 'volcano', 'volmt', 'deepl', 'ms', 'libre', 'tencent'],
+      localProxyAvailable: async () => false
+    }
+  };
+  const mountEl = fakeEl();
+  try {
+    eval(readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8'));
+    IR.settingsPage.mount(mountEl);
+    check('设置页 mount 不抛错', true);
+  } catch (e) {
+    check('设置页 mount 不抛错', false, e.message);
+  }
+  const src = mountEl.innerHTML;
+  check('设置页含默认引擎下拉与 8+ 引擎选项', /data-engine/.test(src) && (src.match(/<option value="/g) || []).length >= 12);
+  check('设置页含 alimt 版本切换与场景下拉', src.indexOf('data-api-in="alimt.edition"') >= 0 && src.indexOf('data-api-in="alimt.scene"') >= 0);
+  check('设置页含密码显隐控件', src.indexOf('data-pw-eye') >= 0);
+  check('设置页含自动模式排序 UI', src.indexOf('data-order-list') >= 0 && src.indexOf('data-order-reset') >= 0);
+  const orderHtml = els['[data-order-list]'] ? els['[data-order-list]'].innerHTML : '';
+  const names = [...orderHtml.matchAll(/order-name">([^<]+)</g)].map(m => m[1]);
+  check('排序列表渲染 9 个引擎且腾讯垫底', names.length === 9 && names[names.length - 1] === '腾讯云 TMT', names.join(','));
+  check('排序行含上移/下移按钮', (orderHtml.match(/data-order-up/g) || []).length === 9 && (orderHtml.match(/data-order-down/g) || []).length === 9);
+}
+
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);
 process.exit(results.some(r => r.startsWith('FAIL')) ? 1 : 0);

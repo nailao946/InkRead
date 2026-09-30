@@ -74,6 +74,8 @@ IR.translate = {
   },
 
   /* ---------- Key 清洗：去掉误粘的 Bearer 前缀 / 引号 / 首尾空白 ---------- */
+  /* auto 模式默认尝试顺序（腾讯垫底）；用户可在设置 → 翻译接口 → 自动模式顺序里自定义 */
+  AUTO_ENGINES: ['youdao', 'aliyun', 'alimt', 'volcano', 'volmt', 'deepl', 'ms', 'libre', 'tencent'],
   _cleanKey(s) {
     return String(s || '').trim()
       .replace(/^bearer\s+/i, '')
@@ -133,9 +135,10 @@ IR.translate = {
     });
   },
 
-  /* ---------- 阿里云机器翻译 · 通用版（TranslateGeneral，经典 RPC 接口，非大模型） ----------
-     需要一对 AccessKeyId / AccessKeySecret（阿里云控制台右上角头像 → AccessKey 管理；
-     建议用 RAM 子账号并只授权「机器翻译」权限）。调用前需先在机器翻译控制台开通通用版服务。
+  /* ---------- 阿里云机器翻译（通用版 TranslateGeneral / 专业版 Translate，经典 RPC 接口） ----------
+     需要一对 AccessKeyId / AccessKeySecret（建议 RAM 子账号只授权机器翻译）。
+     通用版：Scene=general，全领域；专业版：Scene 必填（title/description/communication/medical/social/finance），
+     电商/医疗/社交/金融垂类引擎更准。两版都要先在机器翻译控制台开通对应服务。
      签名：阿里云 RPC V1（HMAC-SHA1）；源语言 auto 自动检测。 */
   _aliPct(s) {
     /* RFC3986 严格百分号编码：encodeURIComponent 之外再补 ! ' ( ) * */
@@ -152,14 +155,17 @@ IR.translate = {
     const c = IR.settings.data.api.alimt || {};
     const akId = this._cleanKey(c.accessKeyId), akSecret = this._cleanKey(c.accessKeySecret);
     if (!akId || !akSecret) throw new Error('未配置阿里云机器翻译：设置 → 翻译接口 填 AccessKeyId / AccessKeySecret');
-    /* 1. 公共参数 + 业务参数 */
+    const pro = c.edition === 'pro';
+    const label = '阿里云机器翻译' + (pro ? '（专业版）' : '');
+    /* 1. 公共参数 + 业务参数（两版只差 Action 与 Scene） */
     const ts = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     const nonce = String(Date.now()) + Math.floor(Math.random() * 1e6);
     const params = {
-      Action: 'TranslateGeneral', Format: 'JSON', Version: '2018-10-12',
+      Action: pro ? 'Translate' : 'TranslateGeneral', Format: 'JSON', Version: '2018-10-12',
       AccessKeyId: akId, SignatureMethod: 'HMAC-SHA1', SignatureVersion: '1.0',
       SignatureNonce: nonce, Timestamp: ts,
-      FormatType: 'text', Scene: 'general',
+      FormatType: 'text',
+      Scene: pro ? (c.scene || 'social') : 'general',
       SourceLanguage: 'auto', SourceText: q, TargetLanguage: 'zh'
     };
     /* 2. 按 key 排序构造规范化查询串 */
@@ -173,18 +179,18 @@ IR.translate = {
       const r = await this.apiFetch(url, { method: 'GET' });
       j = await r.json();
     } catch (e) {
-      throw new Error('阿里云机器翻译请求失败（网络不通或未启用本地转发）');
+      throw new Error(label + '请求失败（网络不通或未启用本地转发）');
     }
-    /* 响应可能包一层 TranslateGeneralResponse，也可能平铺 */
-    const resp = (j && j.TranslateGeneralResponse) || j || {};
+    /* 响应可能包一层（TranslateResponse / TranslateGeneralResponse），也可能平铺 */
+    const resp = (j && (j.TranslateResponse || j.TranslateGeneralResponse)) || j || {};
     const code = String(resp.Code || '200');
     if (code !== '200') {
       const m = this._alimtErr[code] || resp.Message || ('错误码 ' + code);
-      const suffix = /10010|10013/.test(code) ? '（请到阿里云机器翻译控制台开通通用版服务后再试）' : '';
-      throw new Error('阿里云机器翻译 ' + code + '：' + m + suffix);
+      const suffix = /10010|10013/.test(code) ? '（请到阿里云机器翻译控制台开通' + (pro ? '专业版' : '通用版') + '服务后再试）' : '';
+      throw new Error(label + ' ' + code + '：' + m + suffix);
     }
     const text = resp.Data && resp.Data.Translated;
-    return { engine: '阿里云机器翻译', text: String(text || '（无结果）').trim() };
+    return { engine: label, text: String(text || '（无结果）').trim() };
   },
 
   /* ---------- 火山引擎 · 豆包大模型（只要 API Key） ----------
@@ -557,25 +563,35 @@ IR.translate = {
     /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 阿里机器翻译 → 火山方舟 → 火山机器翻译 → DeepL → 微软 → LibreTranslate），
        最后兜底免费 MyMemory */
     const api = IR.settings.data.api;
-    const chain = [];
+    /* 各引擎是否已配置（配置了才参与 auto） */
     const y = api.youdao || {};
-    if (y.secret && (y.key || y.apiKeys)) chain.push('youdao');
     const t = api.tencent || {};
-    if (t.secretId && t.secretKey) chain.push('tencent');
     const al = api.aliyun || {};
-    if (al.apiKey) chain.push('aliyun');
     const am = api.alimt || {};
-    if (am.accessKeyId && am.accessKeySecret) chain.push('alimt');
     const v = api.volcano || {};
-    if (v.apiKey) chain.push('volcano');
     const vmt = api.volmt || {};
-    if (vmt.accessKeyId && vmt.accessKeySecret) chain.push('volmt');
     const dp = api.deepl || {};
-    if (dp.apiKey) chain.push('deepl');
     const ms = api.ms || {};
-    if (ms.apiKey) chain.push('ms');
     const lb = api.libre || {};
-    if (lb.url || lb.apiKey) chain.push('libre');
+    const configured = {
+      youdao: !!(y.secret && (y.key || y.apiKeys)),
+      tencent: !!(t.secretId && t.secretKey),
+      aliyun: !!al.apiKey,
+      alimt: !!(am.accessKeyId && am.accessKeySecret),
+      volcano: !!v.apiKey,
+      volmt: !!(vmt.accessKeyId && vmt.accessKeySecret),
+      deepl: !!dp.apiKey,
+      ms: !!ms.apiKey,
+      libre: !!(lb.url || lb.apiKey)
+    };
+    /* 尝试顺序：用户自定义（设置 → 翻译接口 → 自动模式顺序）优先；
+       默认腾讯垫底；用户列表里漏掉的引擎补到末尾，保证新增引擎仍可用 */
+    const AUTO_ENGINES = this.AUTO_ENGINES;
+    let order = Array.isArray(api.autoOrder) && api.autoOrder.length
+      ? api.autoOrder.filter(n => AUTO_ENGINES.indexOf(n) >= 0) : AUTO_ENGINES.slice();
+    for (const k of AUTO_ENGINES) if (order.indexOf(k) < 0) order.push(k);
+    const chain = [];
+    for (const n of order) if (configured[n]) chain.push(n);
     chain.push('mymemory');
 
     const errs = [];

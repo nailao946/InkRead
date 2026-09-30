@@ -583,6 +583,11 @@ body.toc-open .toc-panel { transform: translateX(0); }
 .pw-box { display: flex; gap: .4rem; flex: 1; min-width: 0; align-items: stretch; }
 .pw-box .input { flex: 1; min-width: 0; }
 .pw-eye { flex: none; }
+.order-row { display: flex; align-items: center; gap: .5rem; padding: .28rem 0; font-size: .82rem; }
+.order-row .order-idx { width: 1.3rem; color: var(--text-3); font-size: .74rem; text-align: right; }
+.order-row .order-name { flex: 1; }
+.order-row .order-mark { font-size: .7rem; color: var(--text-3); white-space: nowrap; }
+.auto-order-list { margin-top: .5rem; }
 .api-card-body { padding-top: .7rem; }
 .api-card-body .settings-row:first-child { margin-top: 0; }
 .api-hint { font-size: .72rem; color: var(--text-3); margin-left: auto; }

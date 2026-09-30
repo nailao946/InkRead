@@ -23,10 +23,10 @@ IR.settingsPage = {
       proxy: c => !!(c.on && c.url)
     };
 
-    /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?]；link = [文案, 网址]
+    /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?]；link = [文案, 网址]；extra = 额外 HTML（如下拉）
        徽标三态：未配置（灰）/ 已配置+测试通过（绿 ✓）/ 已配置+测试未通过（红 ✗）/ 已配置未测试（灰）
        展开规则：已配置自动展开；但用户手动收起过（_collapsed）就不再自动展开 */
-    const card = (name, title, fields, hint, link) => {
+    const card = (name, title, fields, hint, link, extra) => {
       const cfg = s.api[name] || {};
       const ok = filled[name](cfg);
       const tested = cfg._testOk;                 /* undefined=未测试 true=通过 false=未通过 */
@@ -60,6 +60,7 @@ IR.settingsPage = {
           <div class="api-card-body">
             ${link ? `<a class="api-get" href="${link[1]}" target="_blank" rel="noopener">去获取 ${link[0]} ↗</a>` : ''}
             ${(fields || []).map(field).join('')}
+            ${extra || ''}
             <div class="api-card-foot">
               <button class="btn btn-sm btn-primary" data-api-save="${name}">保存</button>
               <button class="btn btn-sm" data-api-test="${name}">测试</button>
@@ -127,6 +128,14 @@ IR.settingsPage = {
             <label class="switch"><input type="checkbox" data-auto-trans ${(s.reader && s.reader.autoTranslate === false) ? '' : 'checked'}><span class="switch-track"></span></label>
             <span class="settings-note" style="margin:0">点单词弹窗后自动出译文，无需再点「翻译」</span>
           </div>
+          <details class="api-help" data-order-box>
+            <summary>自动模式尝试顺序（点开调整；腾讯默认垫底）</summary>
+            <div class="auto-order-list" data-order-list></div>
+            <div class="api-card-foot" style="margin-top:.4rem">
+              <button class="btn btn-sm" data-order-reset>恢复默认顺序</button>
+              <span class="api-hint">只影响「自动」引擎：按此顺序试已配置的接口，都失败才用 MyMemory 兜底</span>
+            </div>
+          </details>
           <div class="api-status" data-localproxy>本地转发：检测中…</div>
         </div>
 
@@ -147,10 +156,25 @@ IR.settingsPage = {
               ['API Key', 'apiKey', 'bailian.console.aliyun.com → API-KEY（sk-…）', true],
               ['模型', 'model', '留空用 qwen-plus；可填 qwen-turbo 等']
             ], '只要一个 API Key', ['百炼 API-KEY 页面', 'https://bailian.console.aliyun.com/'])}
-            ${card('alimt', '阿里云机器翻译 · 通用版（AccessKey）', [
+            ${card('alimt', '阿里云机器翻译（AccessKey）', [
               ['AccessKeyId', 'accessKeyId', 'LTAI 开头；RAM 子账号建议只授权机器翻译', true],
               ['AccessKeySecret', 'accessKeySecret', '与 AccessKeyId 成对使用', true]
-            ], '需先在机器翻译控制台开通通用版服务（非大模型，经典机器翻译）', ['机器翻译控制台', 'https://mt.console.aliyun.com/'])}
+            ], '通用版全领域；专业版垂类更准（需分别开通）', ['机器翻译控制台', 'https://mt.console.aliyun.com/'], `
+              <div class="settings-row"><label>版本</label>
+                <select class="input" data-api-in="alimt.edition" style="width:200px">
+                  <option value="general" ${((s.api.alimt || {}).edition || 'general') === 'general' ? 'selected' : ''}>通用版（全领域）</option>
+                  <option value="pro" ${(s.api.alimt || {}).edition === 'pro' ? 'selected' : ''}>专业版（垂类）</option>
+                </select>
+                <span class="settings-note" style="margin:0">专业版需另开通</span></div>
+              <div class="settings-row"><label>场景（专业版）</label>
+                <select class="input" data-api-in="alimt.scene" style="width:200px">
+                  <option value="social" ${((s.api.alimt || {}).scene || 'social') === 'social' ? 'selected' : ''}>社交（口语化，默认）</option>
+                  <option value="description" ${(s.api.alimt || {}).scene === 'description' ? 'selected' : ''}>商品描述</option>
+                  <option value="title" ${(s.api.alimt || {}).scene === 'title' ? 'selected' : ''}>商品标题</option>
+                  <option value="communication" ${(s.api.alimt || {}).scene === 'communication' ? 'selected' : ''}>商品沟通</option>
+                  <option value="medical" ${(s.api.alimt || {}).scene === 'medical' ? 'selected' : ''}>医疗</option>
+                  <option value="finance" ${(s.api.alimt || {}).scene === 'finance' ? 'selected' : ''}>金融</option>
+                </select></div>`)}
             ${card('volcano', '火山方舟 · 豆包（API Key）', [
               ['API Key', 'apiKey', '形如 ark-xxxx…；console.volcengine.com/ark → API Key 管理', true],
               ['模型', 'model', '留空用 doubao-seed-translation；也可填 ep-… 等其他已开通模型']
@@ -411,6 +435,55 @@ IR.settingsPage = {
       s.api[name]._collapsed = !d.open;
       IR.settings.save();
     }));
+
+    /* ---------- 自动模式尝试顺序（可自定义，腾讯默认垫底） ---------- */
+    const AUTO_LABELS = {
+      youdao: '有道智云', tencent: '腾讯云 TMT', aliyun: '阿里云百炼', alimt: '阿里云机器翻译',
+      volcano: '火山方舟 · 豆包', volmt: '火山机器翻译', deepl: 'DeepL', ms: '微软翻译', libre: 'LibreTranslate'
+    };
+    const AUTO_DEFAULT = (IR.translate.AUTO_ENGINES || []).slice();
+    const getOrder = () => {
+      let o = Array.isArray(s.api.autoOrder) && s.api.autoOrder.length
+        ? s.api.autoOrder.filter(n => AUTO_DEFAULT.indexOf(n) >= 0) : [];
+      for (const k of AUTO_DEFAULT) if (o.indexOf(k) < 0) o.push(k);   /* 漏掉的引擎补到最后 */
+      return o;
+    };
+    const renderOrder = () => {
+      const list = IR.$('[data-order-list]', mountEl);
+      if (!list) return;
+      const order = getOrder();
+      list.innerHTML = order.map((n, i) => `
+        <div class="order-row">
+          <span class="order-idx">${i + 1}</span>
+          <span class="order-name">${AUTO_LABELS[n] || n}</span>
+          <span class="order-mark">${filled[n] && filled[n](s.api[n] || {}) ? '已配置' : '未配置'}</span>
+          <button type="button" class="btn btn-sm" data-order-up="${i}"${i === 0 ? ' disabled' : ''}>上移</button>
+          <button type="button" class="btn btn-sm" data-order-down="${i}"${i === order.length - 1 ? ' disabled' : ''}>下移</button>
+        </div>`).join('');
+    };
+    renderOrder();
+    const orderBox = IR.$('[data-order-box]', mountEl);
+    if (orderBox) {
+      orderBox.addEventListener('click', e => {
+        const up = e.target.closest('[data-order-up]');
+        const down = e.target.closest('[data-order-down]');
+        const reset = e.target.closest('[data-order-reset]');
+        const order = getOrder();
+        if (up) {
+          const i = +up.dataset.orderUp;
+          [order[i - 1], order[i]] = [order[i], order[i - 1]];
+        } else if (down) {
+          const i = +down.dataset.orderDown;
+          [order[i], order[i + 1]] = [order[i + 1], order[i]];
+        } else if (reset) {
+          order.length = 0;
+          order.push(...AUTO_DEFAULT);
+        } else return;
+        s.api.autoOrder = order;
+        IR.settings.save();
+        renderOrder();
+      });
+    }
 
     /* 本地转发状态：桌面版自带；网页版需用 start-server.bat / tools/serve.py 启动 */
     const lpEl = IR.$('[data-localproxy]', mountEl);

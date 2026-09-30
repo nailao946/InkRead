@@ -29,7 +29,7 @@ IR.settings = {
       youdao: { key: '', apiKeys: '', secret: '' },
       tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
       aliyun: { apiKey: '', model: '' },
-      alimt: { accessKeyId: '', accessKeySecret: '' },
+      alimt: { accessKeyId: '', accessKeySecret: '', edition: 'general', scene: 'social' },
       volcano: { apiKey: '', model: '' },
       volmt: { accessKeyId: '', accessKeySecret: '' },
       deepl: { apiKey: '' },
@@ -182,6 +182,15 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
   const am3 = await T.run('car', 'auto');
   check('auto 只配 alimt 时走 alimt', am3.engine === '阿里云机器翻译', JSON.stringify(am3));
 
+  /* 专业版：Action=Translate + Scene */
+  cap = null;
+  T.apiFetch = async (url) => { cap = { url }; return { ok: true, status: 200, json: async () => ({ Code: 200, Data: { Translated: '诊断' } }) }; };
+  IR.settings.data.api.alimt = { accessKeyId: 'LTAI5tTEST', accessKeySecret: 'testSecret', edition: 'pro', scene: 'medical' };
+  const am4 = await T.alimt('diagnosis');
+  check('alimt 专业版走 Translate + Scene + 平铺响应',
+    cap.url.indexOf('Action=Translate&') >= 0 && cap.url.indexOf('Scene=medical') >= 0 &&
+    am4.engine.indexOf('专业版') >= 0 && am4.text === '诊断', cap.url + ' | ' + JSON.stringify(am4));
+
   T.apiFetch = of;
   IR.settings.data.api.alimt = { accessKeyId: '', accessKeySecret: '' };
 }
@@ -290,7 +299,19 @@ for (const n of ['youdao', 'tencent', 'aliyun', 'volcano', 'mymemory']) {
   T[n] = async () => { called.push(label); if (label === 'aliyun') return { engine: '阿里云百炼', text: 'ok' }; throw new Error(label); };
 }
 const r6 = await T.run('x', 'auto');
-check('auto 顺序 有道→腾讯→阿里', r6.engine === '阿里云百炼' && called.join(',') === 'youdao,tencent,aliyun', called.join(','));
+check('auto 顺序 有道→阿里（腾讯默认垫底）', r6.engine === '阿里云百炼' && called.join(',') === 'youdao,aliyun', called.join(','));
+
+/* 6b. 自动模式顺序用户可自定义（s.api.autoOrder） */
+called = [];
+IR.settings.data.api.deepl = { apiKey: 'k' };
+IR.settings.data.api.autoOrder = ['deepl', 'youdao'];
+T.deepl = async () => { called.push('deepl'); throw new Error('deepl 失败'); };
+T.youdao = async () => { called.push('youdao'); return { engine: '有道', text: 'ok' }; };
+T.tencent = async () => { called.push('tencent'); throw new Error('tencent 失败'); };
+const r7 = await T.run('x', 'auto');
+check('auto 自定义顺序生效', r7.engine === '有道' && called.join(',') === 'deepl,youdao', called.join(','));
+IR.settings.data.api.autoOrder = null;
+IR.settings.data.api.deepl = { apiKey: '' };
 
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);
