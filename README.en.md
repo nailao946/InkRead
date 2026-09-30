@@ -31,22 +31,25 @@ READ/
 - **5 themes**, one-click switching (spec: [THEMES.md](./THEMES.md))
 - **Vocabulary**: import TXT / CSV / Excel (.xls/.xlsx) / clipboard; export to .xlsx; three-state
   marking (unknown / learning / known); batch operations; search & filter; backup
-- **Shelf**:
-  - **Group frames (WeChat-Reading style)**: in the *All* view every group gets its own row — a frame
-    header with **icon + name + book count** and a horizontally scrolling row of covers. Click the
-    header to open that group. Icons are optional (choose from 14 presets, or “none”)
+- **Shelf**: **group chips + group frames + cover grid** (WeChat-Reading style)
+  - **Chip bar**: `All / Ungrouped / each group / + New group` — tap any chip to enter it
+  - **Group frames**: in the *All* view every group gets its own row — a frame header with
+    **icon + name + book count** and a horizontally scrolling row of covers; tap the header to open it
+  - **Cover grid**: opening a group shows a responsive cover grid (badge, progress bar and percentage per
+    cell); “⋯” or right-click for details
+  - **Group icons**: pick one of 14 presets in the create/edit dialog, or “none”
   - **Aligned information**: card rows have fixed heights (title exactly two lines, author and meta one
     line each), so progress bars and percentages line up no matter how long the titles are
-  - **Reading progress**: thick rounded gradient bar (grey when unread, amber while reading, green when
-    finished) plus a percentage; click it for details
-  - **Status badge** on the cover: **Unread / Reading / Finished** (derived from progress, manually
-    overridable)
-  - **Details dialog**: cover, status, progress, **total reading time**, last-read time, date added,
-    finish time, length, group; resume / change status / delete
-  - **Vocabulary difficulty (graded reading)**: counts **unknown / learning / known** words in the book
-    plus token coverage, then rates the book (Easy ≥98%, Ideal i+1 95–98%, Challenging 90–95%,
-    Frustrating <90%) with advice, and lists the **top 12 high-frequency unknown words** (one click to
-    add them all to the vocabulary list)
+  - **Reading progress**: thick rounded gradient bar (grey unread, amber reading, green finished) + percentage
+  - **Details dialog**: cover, **“Continue reading” right under the progress bar**, a **segmented control**
+    for the reading state (unread / reading / finished), a compact group selector, total reading time,
+    last-read / added / finished timestamps
+  - **Vocabulary difficulty (graded reading)**: counts **unknown / learning / known** words plus token
+    coverage, rates the book (Easy ≥98%, Ideal i+1 95–98%, Challenging 90–95%, Frustrating <90%) with
+    advice, and lists the **top 12 high-frequency unknown words** (one click to add them all)
+  - **🔍 Find a book**: type a title/author and it opens that site's own search results
+    (Project Gutenberg, Standard Ebooks, Open Library, Douban Books); a “custom source” field accepts any
+    URL template with `{q}` as the keyword placeholder
 - **Reader**: EPUB / MOBI / TXT / PDF (including inline images); three-colour highlighting plus
   lemmatisation; tap-a-word popup with pronunciation, dictionary meaning and online translation
 - **MOBI parsing (deep fixes in v0.5)**: PalmDOC *distance* back-referencing, backward-encoded

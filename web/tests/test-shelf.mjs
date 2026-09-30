@@ -116,16 +116,19 @@ await new Promise(r => setTimeout(r, 3400));
 const b2 = await IR.bookStore.get('b2');
 check('进度 100% 自动标为已读', b2.readState === 'done' && !!b2.finishedAt);
 
-/* 8. 全部视图：分组框（微信读书式）+ 对齐卡片 */
+/* 8. 全部视图：分组条 + 分组框（微信读书式） */
 R.shelfFilter = 'all';
 IR.settings.data.shelf.groups = [{ id: 'gx', name: '待读', icon: '📚', createdAt: 1 }];
 await IR.bookStore.put({ id: 'b3', title: 'Boundless', author: 'R. A. Salvatore', fmt: 'MOBI', wordCount: 117743, progress: 0.42, addedAt: Date.now(), grpId: 'gx', stats: { level: 2, levelText: '适中', tier: 'i+1 理想区' } });
 store['#shelfList'] = makeEl();
 store['#shelfGroups'] = makeEl();
+store['#shelfCrumb'] = makeEl();
 store['#shelfEmptyActions'] = makeEl();
 await R.initShelf();
 const frames = store['#shelfList'].innerHTML;
 const bar1 = store['#shelfGroups'].innerHTML;
+check('分组条保留（全部/未分组/自定义/新建）',
+  bar1.indexOf('全部') >= 0 && bar1.indexOf('未分组') >= 0 && bar1.indexOf('📚 待读') >= 0 && bar1.indexOf('新建分组') >= 0);
 check('全部视图渲染分组框', /group-frame/.test(frames) && /frame-row/.test(frames));
 check('分组框标题带图标与数量', frames.indexOf('📚 待读') >= 0 && /frame-count">1 本/.test(frames));
 check('未分组框存在', frames.indexOf('未分组') >= 0);
@@ -133,19 +136,31 @@ check('框内卡片为紧凑型', /book-card compact/.test(frames));
 check('卡片含状态徽章', /book-state (done|reading|unread)/.test(frames));
 check('卡片含进度百分比', frames.indexOf('已读 <b>42%</b>') >= 0);
 check('卡片含难度徽标', /diff-badge d2/.test(frames) && frames.indexOf('适中') >= 0);
-check('卡片含详情入口', /data-detail/.test(frames));
-check('全部视图工具条含新建分组', bar1.indexOf('新建分组') >= 0);
+check('全部视图隐藏面包屑', store['#shelfCrumb'].hidden === true);
 
-/* 9. 分组视图：网格 + 返回 */
+/* 9. 分组视图：封面宫格 */
 R.shelfFilter = 'gx';
 store['#shelfList'] = makeEl();
 store['#shelfGroups'] = makeEl();
+store['#shelfCrumb'] = makeEl();
 await R.initShelf();
 const grid = store['#shelfList'].innerHTML;
-const bar2 = store['#shelfGroups'].innerHTML;
-check('分组视图用网格卡片', /book-card full/.test(grid));
-check('分组视图有返回全部', bar2.indexOf('‹ 全部') >= 0 && bar2.indexOf('待读') >= 0);
-check('只显示该组书籍', (grid.match(/book-card/g) || []).length === 1);
+check('分组视图是封面宫格', /class="shelf-grid"/.test(grid) && /sg-cell/.test(grid) && /sg-cover/.test(grid));
+check('宫格含状态徽章与百分比', /book-state/.test(grid) && /sg-pct">42%/.test(grid));
+check('宫格含详情入口', /sg-more" data-detail/.test(grid));
+check('面包屑显示分组名', store['#shelfCrumb'].innerHTML.indexOf('待读') >= 0 && store['#shelfCrumb'].hidden === false);
+check('只显示该组书籍', (grid.match(/sg-cell/g) || []).length === 1);
+/* 未分组宫格 */
+R.shelfFilter = '__none__';
+store['#shelfList'] = makeEl();
+store['#shelfCrumb'] = makeEl();
+await R.initShelf();
+check('「未分组」也是宫格视图', /shelf-grid/.test(store['#shelfList'].innerHTML) && store['#shelfCrumb'].innerHTML.indexOf('未分组') >= 0);
+
+/* 9b. 找书搜索源 */
+check('找书内置公版/信息站点', R.FIND_SOURCES.length >= 4 &&
+  R.FIND_SOURCES.some(x => x.id === 'gutenberg') && R.FIND_SOURCES.some(x => x.id === 'custom') &&
+  R.FIND_SOURCES.every(x => x.id === 'custom' || x.url.indexOf('{q}') >= 0));
 
 /* 10. 词频统计与阶梯难度 */
 IR.vocab.statusMap = new Map([['the', 'known'], ['cat', 'learning']]);

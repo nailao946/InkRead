@@ -1,0 +1,6 @@
+﻿reader.js=OK
+settings.js=OK
+util.js=OK
+storage.js=OK
+PASS 鍙敼鍚嶇О涓庢竻绌哄浘鏍?PASS 鍙€夊浘鏍囧垪琛ㄥ惈"鏃犲浘鏍?椤?FAILS=0/50
+PASS 鍙敼鍚嶇О涓庢竻绌哄浘鏍?PASS 鍙€夊浘鏍囧垪琛ㄥ惈"鏃犲浘鏍?椤?FAILS=0/50

@@ -49,11 +49,13 @@ window.addEventListener('unhandledrejection', e => {
       <div class="shelf-head">
         <h2>书架</h2>
         <div class="shelf-actions">
+          <button id="btnFindBook" class="btn btn-ghost">🔍 找书</button>
           <button id="btnImportBook" class="btn btn-primary">导入电子书</button>
           <input type="file" id="bookFileInput" accept=".txt,.epub,.mobi,.azw,.azw3,.pdf,.html,.htm" multiple hidden>
         </div>
       </div>
       <div id="shelfGroups" class="shelf-groups"></div>
+      <div id="shelfCrumb" class="shelf-crumb" hidden></div>
       <div class="dropzone" id="dropzone">
         <p>支持 <b>EPUB / MOBI / TXT / PDF</b> —— 拖拽文件到这里，或点击上方按钮导入</p>
         <p class="dropzone-sub">TXT 自动识别 UTF-8 / GBK 编码，不会乱码 · 受 DRM 保护或扫描图片版的电子书无法导入</p>

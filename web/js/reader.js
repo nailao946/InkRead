@@ -298,6 +298,28 @@ IR.reader = {
       </section>`;
   },
 
+  /* 封面宫格（点进分组后看到的那种） */
+  _coverGridHtml(books) {
+    return `<div class="shelf-grid">${books.map(b => {
+      const st = this.readStateOf(b);
+      const pct = Math.round((b.progress || 0) * 100);
+      const cover = b.cover
+        ? `<img class="sg-cover-img" src="${b.cover}" alt="">`
+        : `<div class="sg-cover-img book-cover-fallback">${IR.esc((b.title || '?').slice(0, 1))}</div>`;
+      return `
+        <div class="sg-cell" data-id="${b.id}" title="${IR.esc(b.title)}">
+          <div class="sg-cover">
+            ${cover}
+            <span class="book-state ${st}">${this.readStateText[st]}</span>
+            <button class="sg-more" data-detail title="详情 / 分组 / 删除">⋯</button>
+          </div>
+          <div class="sg-title">${IR.esc(b.title)}</div>
+          <div class="sg-bar"><i class="st-${st}" style="width:${pct}%"></i></div>
+          <div class="sg-pct">${pct}%</div>
+        </div>`;
+    }).join('')}</div>`;
+  },
+
   async initShelf() {
     const listEl = IR.$('#shelfList');
     const barEl = IR.$('#shelfGroups');
@@ -313,27 +335,40 @@ IR.reader = {
     }
 
     const groups = this.groups();
+    const counts = { '': books.filter(b => !b.grpId).length };
+    groups.forEach(g => { counts[g.id] = books.filter(b => b.grpId === g.id).length; });
+
+    /* 分组条（保留最初的形态）：全部 / 未分组 / 各分组 / ＋新建 */
+    const chip = (val, label) => `<button class="group-chip${this.shelfFilter === val ? ' active' : ''}" data-goto="${IR.esc(val)}">${label}</button>`;
+    barEl.innerHTML =
+      chip('all', '全部 <b>' + books.length + '</b>') +
+      chip('__none__', '未分组 <b>' + counts[''] + '</b>') +
+      groups.map(g => chip(g.id, (g.icon ? g.icon + ' ' : '') + IR.esc(g.name) + ' <b>' + counts[g.id] + '</b>')).join('') +
+      '<button class="group-new" data-group-new>＋ 新建分组</button>';
 
     if (this.shelfFilter === 'all') {
-      /* 全部视图：按「分组框」排布，每框一行（微信读书式） */
-      barEl.innerHTML = `<button class="group-new" data-group-new>＋ 新建分组</button>`;
+      /* 全部视图：分组框（每框一行，框内横排封面） */
       const frames = groups.map(g => this._groupFrameHtml(g, books.filter(b => b.grpId === g.id)));
       const un = books.filter(b => !b.grpId);
       if (un.length || !groups.length) frames.push(this._groupFrameHtml(null, un));
       listEl.className = 'shelf-frames';
       listEl.innerHTML = frames.join('');
     } else {
-      /* 分组视图：网格显示该组书籍 */
-      const g = groups.find(x => x.id === this.shelfFilter);
-      const inGroup = books.filter(b => b.grpId === this.shelfFilter);
-      barEl.innerHTML =
-        `<button class="group-chip" data-back>‹ 全部</button>` +
-        `<span class="group-current">${g && g.icon ? g.icon + ' ' : ''}${IR.esc(g ? g.name : '')}<b>${inGroup.length}</b></span>`;
-      listEl.className = 'shelf-list';
+      /* 分组视图（含"未分组"）：封面宫格 */
+      const g = this.shelfFilter === '__none__' ? null : groups.find(x => x.id === this.shelfFilter);
+      const inGroup = this.shelfFilter === '__none__'
+        ? books.filter(b => !b.grpId)
+        : books.filter(b => b.grpId === this.shelfFilter);
+      listEl.className = 'shelf-grid-wrap';
       listEl.innerHTML = inGroup.length
-        ? inGroup.map(b => this._cardHtml(b, 'full')).join('')
+        ? this._coverGridHtml(inGroup)
         : `<div class="book-empty">这个分组里还没有书<br><span style="font-size:.82rem">在书籍「详情」里把书移入本组</span></div>`;
+      IR.$('#shelfCrumb').innerHTML =
+        `<b>${g ? (g.icon ? g.icon + ' ' : '') + IR.esc(g.name) : '未分组'}</b> · ${inGroup.length} 本` +
+        (g ? ` <button class="frame-more" data-folder-menu="${g.id}" title="重命名 / 图标 / 删除">⋯</button>` : '');
+      IR.$('#shelfCrumb').hidden = false;
     }
+    if (this.shelfFilter === 'all' && IR.$('#shelfCrumb')) IR.$('#shelfCrumb').hidden = true;
 
     /* 交互（事件委托） */
     listEl.onclick = e => {
@@ -343,18 +378,24 @@ IR.reader = {
       if (go) { this.shelfFilter = go.dataset.goto; this.initShelf(); return; }
       const fm = e.target.closest('[data-folder-menu]');
       if (fm) { e.stopPropagation(); this.openGroupDialog('edit', fm.dataset.folderMenu); return; }
-      const card = e.target.closest('.book-card');
-      if (card) this.openBook(card.dataset.id);
+      const cell = e.target.closest('.book-card') || e.target.closest('.sg-cell');
+      if (cell) this.openBook(cell.dataset.id);
     };
     listEl.oncontextmenu = e => {
-      const card = e.target.closest('.book-card');
-      if (!card) return;
+      const cell = e.target.closest('.book-card') || e.target.closest('.sg-cell');
+      if (!cell) return;
       e.preventDefault();
-      this.openBookDetail(card.dataset.id);
+      this.openBookDetail(cell.dataset.id);
     };
     barEl.onclick = e => {
+      const go = e.target.closest('[data-goto]');
+      if (go) { this.shelfFilter = go.dataset.goto; this.initShelf(); return; }
       if (e.target.closest('[data-group-new]')) this.openGroupDialog('new');
-      else if (e.target.closest('[data-back]')) { this.shelfFilter = 'all'; this.initShelf(); }
+    };
+    const crumb = IR.$('#shelfCrumb');
+    if (crumb) crumb.onclick = e => {
+      if (e.target.closest('[data-folder-menu]')) return;
+      this.shelfFilter = 'all'; this.initShelf();
     };
   },
 
@@ -422,20 +463,26 @@ IR.reader = {
         <div class="bd-info">
           <h3 class="bd-title">${IR.esc(b.title)}</h3>
           <div class="bd-author">${b.author ? IR.esc(b.author) : '未知作者'} · ${IR.esc(b.fmt || '')} · ${(b.wordCount || 0).toLocaleString()} 词</div>
-          <div class="bd-row"><span>阅读状态</span><b class="bd-state ${st}">${this.readStateText[st]}</b></div>
-          <div class="bd-row"><span>阅读进度</span><b>${pct}%</b></div>
           <div class="bd-bar st-${st}"><i style="width:${pct}%"></i></div>
+          <div class="bd-prog-line"><span>已读 <b>${pct}%</b></span><span class="bd-state ${st}">${this.readStateText[st]}</span></div>
+          <button class="btn btn-primary bd-continue" data-bd-open>继续阅读</button>
         </div>
+      </div>
+      <div class="bd-row"><span>阅读状态</span>
+        <div class="seg" data-bd-seg>
+          ${['unread', 'reading', 'done'].map(k =>
+            `<button class="seg-btn${st === k ? ' active s-' + k : ''}" data-state="${k}">${this.readStateText[k]}</button>`).join('')}
+        </div>
+      </div>
+      <div class="bd-row"><span>分组</span>
+        <select class="input select-sm" data-bd-group>${grpOpts}</select>
+        <button class="btn btn-sm btn-ghost" data-bd-newgroup>＋新建</button>
       </div>
       <div class="bd-grid">
         <div class="bd-cell"><span>累计阅读</span><b>${this.fmtDuration(b.readSeconds)}</b></div>
         <div class="bd-cell"><span>最后阅读</span><b>${this.fmtTime(b.lastOpenedAt)}</b></div>
         <div class="bd-cell"><span>加入书架</span><b>${this.fmtTime(b.addedAt)}</b></div>
         <div class="bd-cell"><span>读完时间</span><b>${this.fmtTime(b.finishedAt)}</b></div>
-      </div>
-      <div class="bd-row"><span>分组</span>
-        <select class="input" data-bd-group style="min-width:170px">${grpOpts}</select>
-        <button class="btn btn-sm" data-bd-newgroup>新建分组</button>
       </div>
 
       <div class="bd-section">
@@ -446,10 +493,6 @@ IR.reader = {
       </div>
 
       <div class="modal-foot bd-foot">
-        <button class="btn btn-primary" data-bd-open>继续阅读</button>
-        <button class="btn btn-sm" data-bd-state="reading">标为在读</button>
-        <button class="btn btn-sm" data-bd-state="done">标为已读</button>
-        <button class="btn btn-sm" data-bd-state="unread">标为未读</button>
         <button class="btn btn-sm btn-danger" data-bd-del>删除本书</button>
         <button class="btn btn-ghost" data-bd-close>关闭</button>
       </div>`, box => {
@@ -461,10 +504,14 @@ IR.reader = {
       });
       IR.$('[data-bd-newgroup]', box).addEventListener('click', () => R.openGroupDialog('new', null, { assignTo: b.id }));
       IR.$('[data-bd-restat]', box).addEventListener('click', () => R._renderStats(box, b, true));
-      IR.$$('[data-bd-state]', box).forEach(btn => btn.addEventListener('click', async () => {
-        await R.setReadState(b.id, btn.dataset.bdState);
-        IR.toast('已标记为「' + R.readStateText[btn.dataset.bdState] + '」', 'ok');
-        IR.modal.close();
+      /* 阅读状态：一个分段控件搞定（不再一排按钮） */
+      IR.$$('[data-bd-seg] .seg-btn', box).forEach(btn => btn.addEventListener('click', async () => {
+        const k = btn.dataset.state;
+        await R.setReadState(b.id, k);
+        IR.$$('[data-bd-seg] .seg-btn', box).forEach(x => {
+          x.className = 'seg-btn' + (x === btn ? ' active s-' + k : '');
+        });
+        IR.toast('已标记为「' + R.readStateText[k] + '」', 'ok');
       }));
       IR.$('[data-bd-del]', box).addEventListener('click', async () => {
         if (!confirm(`删除《${b.title}》？词库标记不受影响。`)) return;
@@ -483,6 +530,69 @@ IR.reader = {
         R._renderStats(box, b, true);
       });
       R._renderStats(box, b, false);
+    });
+  },
+
+  /* ---------- 找书：打开各站点自己的搜索结果页 ---------- */
+  FIND_SOURCES: [
+    { id: 'gutenberg', name: 'Project Gutenberg（7 万+ 免费公版书）', url: 'https://www.gutenberg.org/ebooks/search/?query={q}' },
+    { id: 'standard', name: 'Standard Ebooks（精校公版书）', url: 'https://standardebooks.org/ebooks?query={q}' },
+    { id: 'openlibrary', name: 'Open Library（图书信息 / 在线借阅）', url: 'https://openlibrary.org/search?q={q}' },
+    { id: 'douban', name: '豆瓣读书（中文书信息与评分）', url: 'https://search.douban.com/book/subject_search?search_text={q}' },
+    { id: 'custom', name: '自定义搜索源（自己填 URL 模板）', url: '' }
+  ],
+  openFindBook() {
+    const R = this;
+    const s = IR.settings.data;
+    s.finder = s.finder || { custom: '', last: 'gutenberg' };
+    const opts = R.FIND_SOURCES.map(x =>
+      `<option value="${x.id}"${s.finder.last === x.id ? ' selected' : ''}>${x.name}</option>`).join('');
+    IR.modal.open(`
+      <h3 style="margin-top:0">🔍 找书</h3>
+      <div class="bd-row"><span>书名 / 作者</span>
+        <input class="input" data-fq placeholder="例如：Boundless Salvatore" style="flex:1">
+      </div>
+      <div class="bd-row"><span>搜索源</span>
+        <select class="input select-sm" data-fsrc>${opts}</select>
+      </div>
+      <div class="bd-row" data-fcustom hidden><span>URL 模板</span>
+        <input class="input" data-furl value="${IR.esc(s.finder.custom || '')}" placeholder="https://站点/search?q={q}" style="flex:1">
+      </div>
+      <p class="settings-note">会直接用<b>系统默认浏览器</b>打开该站点的搜索结果页，找到后下载文件再拖进书架导入。
+      下载电子书请遵守当地法律与版权：内置的都是公版书/图书信息站点；
+      其他来源（如影子图书馆）分发的是未经授权的副本，没有内置为默认源——可在「自定义搜索源」里填任意站点地址（用 <code>{q}</code> 代表关键词）。</p>
+      <div class="modal-foot">
+        <button class="btn btn-primary" data-fgo>搜索并打开</button>
+        <button class="btn btn-ghost" data-fcancel>取消</button>
+      </div>`, box => {
+      const srcSel = IR.$('[data-fsrc]', box);
+      const customRow = IR.$('[data-fcustom]', box);
+      const syncSrc = () => {
+        const isCustom = srcSel.value === 'custom';
+        customRow.hidden = !isCustom;
+        if (isCustom) IR.$('[data-furl]', box).focus();
+      };
+      srcSel.addEventListener('change', syncSrc);
+      syncSrc();
+      IR.$('[data-fcancel]', box).addEventListener('click', () => IR.modal.close());
+      const go = () => {
+        const q = IR.$('[data-fq]', box).value.trim();
+        if (!q) return IR.toast('先输入书名或作者', 'err');
+        const src = R.FIND_SOURCES.find(x => x.id === srcSel.value) || R.FIND_SOURCES[0];
+        let tpl = src.id === 'custom' ? IR.$('[data-furl]', box).value.trim() : src.url;
+        if (!tpl) return IR.toast('请填写 URL 模板（用 {q} 代表关键词）', 'err');
+        if (tpl.indexOf('{q}') < 0) tpl += (tpl.indexOf('?') >= 0 ? '&q=' : '?q=') + '{q}';
+        s.finder.last = src.id;
+        if (src.id === 'custom') s.finder.custom = IR.$('[data-furl]', box).value.trim();
+        IR.settings.save();
+        const url = tpl.replace('{q}', encodeURIComponent(q));
+        try { window.open(url, '_blank'); IR.toast('已在浏览器打开搜索结果', 'ok'); }
+        catch (e) { IR.toast('打开失败：' + e.message, 'err'); }
+        IR.modal.close();
+      };
+      IR.$('[data-fgo]', box).addEventListener('click', go);
+      IR.$('[data-fq]', box).addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+      IR.$('[data-fq]', box).focus();
     });
   },
 
@@ -551,6 +661,8 @@ IR.reader = {
     });
     ['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => e.preventDefault()));
     IR.$('#btnBackShelf').addEventListener('click', () => { this.speech.stop(); this.showShelf(); });
+    const findBtn = IR.$('#btnFindBook');
+    if (findBtn) findBtn.addEventListener('click', () => this.openFindBook());
   },
 
   showShelf() {

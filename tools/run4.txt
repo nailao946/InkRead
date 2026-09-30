@@ -1,0 +1,15 @@
+﻿debug_exit=0
+release_exit=0
+--- LOG ---
+2026-09-30 21:11:41  ===== 启动 =====
+2026-09-30 21:11:41  exe: C:\Users\admin\Desktop\READ\wpf\bin\Release\net8.0-windows\
+2026-09-30 21:11:41  XAML 已加载
+2026-09-30 21:11:41  WebView2 运行时版本: 154.0.4258.37
+2026-09-30 21:11:41  本地服务端口: 17890，内嵌资源: 82 项
+2026-09-30 21:11:41  创建 WebView2 环境（用户数据目录: C:\Users\admin\AppData\Local\InkRead\WebView2）…
+2026-09-30 21:11:41  环境就绪，初始化 WebView2 控件…
+2026-09-30 21:11:44  CoreWebView2 就绪
+2026-09-30 21:11:44  导航: http://127.0.0.1:17890/index.html
+2026-09-30 21:11:47  导航完成: success=True status=Unknown
+2026-09-30 21:11:53  启动自检: boot="1"
+2026-09-30 21:11:53  启动自检详情: "{\"boot\":\"1\",\"stage\":\"7\",\"bodyLen\":172817,\"scripts\":19,\"shelfCards\":3,\"frames\":1,\"newGroupBtn\":1,\"store\":true,\"jsErr\":\"\",\"promiseErr\":\"\"}"

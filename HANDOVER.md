@@ -139,9 +139,17 @@ InkRead.exe
    结果缓存在 `book.stats`（含 `topUnknown` 高频生词），点「重新统计」重算。词汇口径依赖 `IR.vocab.statusMap`。
 9. **分组带图标**：`shelf.groups = [{id,name,icon,createdAt}]`；`GROUP_ICONS` 为可选图标集（首项为空串＝无图标）；
    新建/编辑统一走 `openGroupDialog()`（不要再用 `prompt()`）。
-10. **样式全部走 CSS 变量**（`--text/--bg-panel/--accent/--success/--danger` 等），不要写死颜色，
+10. **书架三级视图**（都在 `initShelf`）：分组条 chips（`shelfFilter`）→ `'all'` 渲染分组框（`_groupFrameHtml`）
+    → 其他值渲染**封面宫格**（`_coverGridHtml`，`.sg-cell`）。事件全部走**委托**（`listEl.onclick`），
+    识别 `[data-detail]` / `[data-goto]` / `[data-folder-menu]` / `.book-card|.sg-cell`。
+11. **找书**：`FIND_SOURCES` 内置公版/信息站点，`openFindBook()` 用 `window.open` 打开站点自身搜索页
+    （桌面壳的 `NewWindowRequested` 会转交系统浏览器）；自定义 URL 模板存 `settings.finder.custom`，`{q}` 为占位。
+    **不应把影子图书馆（盗版）站内置成默认源**；自定义模板已足以让用户自行配置。
+12. **UI 细节约定**：接口卡网格用 `align-items:start`（否则展开一张会拉伸同排）；弹窗内容统一走 `.modal`；
+    阅读状态用 `.seg` 分段控件；滚动条已全局细圆角化（`*::-webkit-scrollbar`）。
+13. **样式全部走 CSS 变量**（`--text/--bg-panel/--accent/--success/--danger` 等），不要写死颜色，
    否则主题切换会破。
-11. **密钥永不入库**：API Key 只出现在 localStorage 与用户自己的 `settings.json`；`.gitignore` 排除构建产物与真实电子书。
+14. **密钥永不入库**：API Key 只出现在 localStorage 与用户自己的 `settings.json`；`.gitignore` 排除构建产物与真实电子书。
 
 ---
 

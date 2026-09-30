@@ -20,8 +20,8 @@ IR.settingsPage = {
       proxy: c => !!(c.on && c.url)
     };
 
-    /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?] */
-    const card = (name, title, fields, hint) => {
+    /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?]；link = [文案, 网址] */
+    const card = (name, title, fields, hint, link) => {
       const ok = filled[name](s.api[name] || {});
       return `
         <details class="api-card" data-card="${name}"${ok ? ' open' : ''}>
@@ -30,6 +30,7 @@ IR.settingsPage = {
             <span class="api-badge${ok ? ' ok' : ''}" data-badge="${name}">${ok ? '已配置' : '未配置'}</span>
           </summary>
           <div class="api-card-body">
+            ${link ? `<a class="api-get" href="${link[1]}" target="_blank" rel="noopener">去获取 ${link[0]} ↗</a>` : ''}
             ${(fields || []).map(f =>
               `<div class="settings-row"><label>${f[0]}</label>` +
               `<input class="input"${f[3] ? ' type="password"' : ''} data-api-in="${name}.${f[1]}" ` +
@@ -106,33 +107,33 @@ IR.settingsPage = {
               ['应用ID', 'key', '官网「应用ID」'],
               ['API Keys', 'apiKeys', '官网「查看」获取；选填，鉴权失败自动重试'],
               ['应用密钥', 'secret', '官网「应用密钥」', true]
-            ], '每月 5 万字符免费')}
+            ], '每月 5 万字符免费', ['有道智云控制台', 'https://ai.youdao.com/'])}
             ${card('baidu', '百度智能云', [
               ['APP ID', 'appid', '官网「APP ID」'],
               ['密钥', 'secretKey', '官网「密钥」（即 Secret Key）', true],
               ['API Keys', 'apiKey', '官网「API Keys」（即 API Key）']
-            ], '每月 5 万字符免费')}
+            ], '每月 5 万字符免费', ['百度智能云机器翻译', 'https://console.bce.baidu.com/ai-engine/mt/app/list'])}
             ${card('tencent', '腾讯云 TMT', [
               ['SecretId', 'secretId', '访问管理 → API 密钥'],
               ['SecretKey', 'secretKey', '访问管理 → API 密钥', true],
               ['地域', 'region', '默认 ap-guangzhou']
-            ], '每月 500 万字符免费')}
+            ], '每月 500 万字符免费', ['腾讯云 API 密钥', 'https://console.cloud.tencent.com/cam/capi'])}
             ${card('aliyun', '阿里云机器翻译', [
               ['AccessKey ID', 'accessKeyId', 'RAM → 访问密钥'],
               ['AccessKey Secret', 'accessKeySecret', 'RAM → 访问密钥', true],
               ['地域', 'region', '默认 cn-hangzhou']
-            ], '每月 100 万字符免费')}
+            ], '每月 100 万字符免费', ['阿里云访问密钥', 'https://ram.console.aliyun.com/manage/ak'])}
             ${card('huawei', '华为云机器翻译', [
               ['AK', 'ak', '我的凭证 → 访问密钥'],
               ['SK', 'sk', '我的凭证 → 访问密钥', true],
               ['项目 ID', 'projectId', '我的凭证 → 项目列表'],
               ['地域', 'region', '默认 cn-north-4']
-            ], '需项目 ID')}
+            ], '需项目 ID', ['华为云我的凭证', 'https://console.huaweicloud.com/iam/'])}
             ${card('volcano', '火山引擎翻译', [
               ['AccessKey', 'accessKey', '访问控制 → API 访问密钥'],
               ['SecretKey', 'secretKey', '访问控制 → API 访问密钥', true],
               ['地域', 'region', '默认 cn-north-1']
-            ], '每月 200 万字符免费')}
+            ], '每月 200 万字符免费', ['火山引擎 API 密钥', 'https://console.volcengine.com/iam/keymanage/'])}
           </div>
         </div>
 
@@ -179,12 +180,12 @@ IR.settingsPage = {
         <details class="api-help">
           <summary>怎么申请 Key / 哪些是必填（点开看）</summary>
           <div class="api-help-body">
-            <p><b>有道智云</b>：ai.youdao.com → 应用总览 → 查看应用，取「应用ID + API Keys + 应用密钥」，三行都填上最稳（签名用应用ID，鉴权失败会自动换 API Keys 重试）。</p>
-            <p><b>百度智能云</b>：cloud.baidu.com → 机器翻译 → 创建应用，取「APP ID + 密钥 + API Keys」（翻译鉴权实际用 API Keys 与密钥）。</p>
-            <p><b>腾讯云</b>：console.cloud.tencent.com/cam/capi 取 SecretId / SecretKey；地域默认 ap-guangzhou 即可。</p>
-            <p><b>阿里云</b>：ram.console.aliyun.com/manage/ak 取 AccessKey ID / Secret；地域默认 cn-hangzhou。</p>
-            <p><b>华为云</b>：console.huaweicloud.com → 我的凭证，取「访问密钥（AK/SK）」与「项目 ID」，<b>三项都必填</b>。</p>
-            <p><b>火山引擎</b>：console.volcengine.com/iam/keymanage 取 AccessKey / SecretKey；地域默认 cn-north-1。</p>
+            <p><b>有道智云</b>：<a href="https://ai.youdao.com/" target="_blank" rel="noopener">ai.youdao.com</a> → 应用总览 → 查看应用，取「应用ID + API Keys + 应用密钥」，三行都填上最稳（签名用应用ID，鉴权失败会自动换 API Keys 重试）。</p>
+            <p><b>百度智能云</b>：<a href="https://console.bce.baidu.com/ai-engine/mt/app/list" target="_blank" rel="noopener">机器翻译控制台</a> → 创建应用，取「APP ID + 密钥 + API Keys」（翻译鉴权实际用 API Keys 与密钥）。</p>
+            <p><b>腾讯云</b>：<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener">访问管理 → API 密钥</a> 取 SecretId / SecretKey；地域默认 ap-guangzhou 即可。</p>
+            <p><b>阿里云</b>：<a href="https://ram.console.aliyun.com/manage/ak" target="_blank" rel="noopener">RAM → 访问密钥</a> 取 AccessKey ID / Secret；地域默认 cn-hangzhou。</p>
+            <p><b>华为云</b>：<a href="https://console.huaweicloud.com/iam/" target="_blank" rel="noopener">我的凭证</a> 取「访问密钥（AK/SK）」与「项目 ID」，<b>三项都必填</b>。</p>
+            <p><b>火山引擎</b>：<a href="https://console.volcengine.com/iam/keymanage/" target="_blank" rel="noopener">访问控制 → API 访问密钥</a> 取 AccessKey / SecretKey；地域默认 cn-north-1。</p>
             <p class="settings-note"><b>代理怎么接（桌面版生效）</b>：Clash 默认混合端口 <code>7890</code> → <code>http://127.0.0.1:7890</code>；
             v2rayN 默认 HTTP <code>10809</code> / SOCKS <code>10808</code> → <code>http://127.0.0.1:10809</code> 或 <code>socks5://127.0.0.1:10808</code>（也支持 <code>socks5://</code>）。
             订阅链接只能导入到 Clash / v2rayN 客户端里（软件「订阅」→ 粘贴订阅 URL → 更新），程序不直连订阅。
