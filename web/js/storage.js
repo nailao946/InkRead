@@ -64,6 +64,9 @@ IR.settings = {
     tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
     aliyun: { apiKey: '', model: '' },
     volcano: { apiKey: '', model: '' },
+    deepl: { apiKey: '' },
+    ms: { apiKey: '', region: '' },
+    libre: { url: '', apiKey: '' },
     proxy: { on: false, url: '' }, engine: 'auto'
   }, reader: { fontSize: 18, lineHeight: 2.0, fontFamily: 'serif', autoTranslate: true }, storageDir: '', shelf: { groups: [] }, finder: { custom: '', last: 'gutenberg' }, tocPinned: false },
   load() {

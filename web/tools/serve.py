@@ -4,9 +4,9 @@
 墨读 InkRead — 本地服务（静态文件 + 翻译 API 转发）
 
 为什么需要它：
-  浏览器直连有道/百度等翻译官方接口会被 CORS 拦截（浏览器安全策略，无法从网页内部绕过）。
+  浏览器直连翻译官方接口（有道/腾讯/阿里/火山/DeepL/微软等）会被 CORS 拦截（浏览器安全策略，无法从网页内部绕过）。
   本服务在本地提供一个转发端点 /__proxy?url=<目标地址>，由它代为请求并补上跨域头，
-  因此网页版也能正常使用有道、百度等官方接口。
+  因此网页版也能正常使用官方翻译接口。
 
 用法：
   python tools/serve.py [端口]        # 默认 8642，端口被占用会自动往后找
@@ -49,20 +49,63 @@ ALLOW_HOSTS = {
     'tmt.tencentcloudapi.com',
     'dashscope.aliyuncs.com',
     'ark.cn-beijing.volces.com',
+    'api-free.deepl.com',
+    'api.deepl.com',
+    'libretranslate.com',
+    'libretranslate.de',
+    'translate.terraprint.co',
+    'lt.vern.cc',
+    'translate.fedilab.app',
 }
 
-# 地域化域名的后缀白名单（如 dashscope-intl.aliyuncs.com）
+# 地域化域名的后缀白名单（如 dashscope-intl.aliyuncs.com、LibreTranslate 公开实例）
 ALLOW_HOST_SUFFIXES = (
     '.aliyuncs.com',
+    '.libretranslate.com',
 )
 
+# 用户自定义白名单：<存档目录>/proxy-allow.txt（每行一个域名；*.x.com 表示后缀匹配），按目录缓存 5 秒
+_extra_allow = {}   # root -> [hosts]
+_extra_allow_at = {}  # root -> timestamp
 
-def host_allowed(host):
+
+def extra_allow(root=None):
+    import time as _t
+    base = os.path.abspath(root) if root else default_store_root()
+    now = _t.time()
+    if now - _extra_allow_at.get(base, 0) < 5:
+        return _extra_allow.get(base, [])
+    _extra_allow_at[base] = now
+    out = []
+    try:
+        fp = os.path.join(base, 'proxy-allow.txt')
+        if os.path.isfile(fp):
+            with open(fp, 'r', encoding='utf-8') as f:
+                for line in f:
+                    s = line.strip()
+                    if s and not s.startswith('#'):
+                        out.append(s.lower())
+    except Exception:
+        out = []
+    _extra_allow[base] = out
+    return out
+
+
+def host_allowed(host, root=None):
     if not host:
         return False
-    if host in ALLOW_HOSTS:
+    h = host.lower()
+    if h in ALLOW_HOSTS:
         return True
-    return any(host.endswith(suffix) for suffix in ALLOW_HOST_SUFFIXES)
+    if any(h.endswith(suffix) for suffix in ALLOW_HOST_SUFFIXES):
+        return True
+    for e in extra_allow(root):
+        if e.startswith('*.'):
+            if h.endswith(e[1:]):
+                return True
+        elif h == e:
+            return True
+    return False
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -229,7 +272,9 @@ class Handler(SimpleHTTPRequestHandler):
             t = urllib.parse.urlparse(target)
         except Exception:
             return self._json(403, {'error': 'url 非法'})
-        if t.scheme not in ('http', 'https') or not host_allowed(t.hostname):
+        # 自定义白名单（proxy-allow.txt）从请求的存档目录读取；缺省用默认目录
+        proxy_root = (qs.get('root') or [''])[0] or None
+        if t.scheme not in ('http', 'https') or not host_allowed(t.hostname, proxy_root):
             return self._json(403, {'error': 'url 不在白名单内'})
 
         body = None
@@ -328,7 +373,7 @@ def main():
 
     url = 'http://127.0.0.1:%d/index.html' % port
     print('墨读 InkRead 本地服务已启动：' + url)
-    print('（已内置翻译转发，网页版可直接使用有道/百度等官方接口）')
+    print('（已内置翻译转发，网页版可直接使用官方翻译接口）')
     print('关闭本窗口即停止服务。')
 
     if not no_open:

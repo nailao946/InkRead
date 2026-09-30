@@ -23,7 +23,7 @@ namespace InkRead
     ///  1) 前端资源（web/**）在编译时全部内嵌进 exe，运行时无需 web 文件夹、无需外部依赖；
     ///  2) 内置本地服务（LocalServer）把内嵌资源以 http://127.0.0.1:端口 提供，
     ///     于是 Service Worker / IndexedDB / Web Worker(pdf.js) / TTS 都按标准行为工作；
-    ///  3) 同一服务提供 /__proxy 转发端点，前端可借此调用有道、百度等官方翻译接口（绕开 CORS）；
+    ///  3) 同一服务提供 /__proxy 转发端点，前端可借此调用官方翻译接口（绕开 CORS）；
     ///  4) 初始化全程写日志（exe 同级 InkRead.log + %LOCALAPPDATA%\InkRead\），
     ///     失败时弹窗给出具体原因，并在页面内注入诊断信息，避免“纯白窗口、无从下手”。
     ///

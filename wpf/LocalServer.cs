@@ -19,7 +19,7 @@ namespace InkRead
     /// 为什么需要它：
     ///  1) 用真实 http://127.0.0.1 源加载前端，Service Worker / IndexedDB / Worker 都按标准行为工作；
     ///  2) 浏览器直连翻译官方接口会被 CORS 拦截，这里提供 /__proxy 由宿主代发请求（无 CORS 限制），
-    ///     因此桌面版可直接使用有道、百度等官方接口。
+    ///     因此桌面版可直接使用官方翻译接口。
     ///
     /// 实现：TcpListener 手写极简 HTTP/1.1（每个连接处理一个请求后关闭），
     /// 避免 HTTP.sys 前缀注册所需的管理员权限/URL ACL。
@@ -37,13 +37,56 @@ namespace InkRead
             "api.mymemory.translated.net",
             "tmt.tencentcloudapi.com",
             "dashscope.aliyuncs.com",
-            "ark.cn-beijing.volces.com"
+            "ark.cn-beijing.volces.com",
+            "api-free.deepl.com",
+            "api.deepl.com",
+            "libretranslate.com",
+            "libretranslate.de",
+            "translate.terraprint.co",
+            "lt.vern.cc",
+            "translate.fedilab.app"
         };
 
         private static readonly string[] AllowHostSuffixes =
         {
-            ".aliyuncs.com"         /* 阿里云地域化域名（如 dashscope-intl.aliyuncs.com） */
+            ".aliyuncs.com",        /* 阿里云地域化域名（如 dashscope-intl.aliyuncs.com） */
+            ".libretranslate.com"   /* LibreTranslate 公开实例 */
         };
+
+        /* 用户可在 <存档目录>/proxy-allow.txt 里追加允许转发的域名（每行一个；*.x.com 表示后缀匹配），
+           用于自建的 LibreTranslate 等；按目录缓存 5 秒。 */
+        private static readonly object AllowLock = new object();
+        private static string[] _extraAllow = new string[0];
+        private static string _extraAllowRoot = null;
+        private static DateTime _extraAllowAt = DateTime.MinValue;
+
+        private static string[] ExtraAllow(string storeRoot)
+        {
+            lock (AllowLock)
+            {
+                if (_extraAllowRoot == storeRoot && (DateTime.UtcNow - _extraAllowAt).TotalSeconds < 5)
+                    return _extraAllow;
+                _extraAllowAt = DateTime.UtcNow;
+                _extraAllowRoot = storeRoot;
+                var list = new List<string>();
+                try
+                {
+                    string f = Path.Combine(storeRoot, "proxy-allow.txt");
+                    if (File.Exists(f))
+                    {
+                        foreach (string line in File.ReadAllLines(f))
+                        {
+                            string s = line.Trim();
+                            if (s.Length == 0 || s.StartsWith("#")) continue;
+                            list.Add(s.ToLowerInvariant());
+                        }
+                    }
+                }
+                catch { /* 读取失败则忽略自定义白名单 */ }
+                _extraAllow = list.ToArray();
+                return _extraAllow;
+            }
+        }
 
         private static readonly Dictionary<string, string> Mime =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -501,10 +544,13 @@ namespace InkRead
             }
 
             string target = GetQuery(req.Query, "url");
+            string storeRoot;
+            try { storeRoot = ResolveRoot(GetQuery(req.Query, "root")); }   /* 自定义白名单文件所处的目录 */
+            catch { storeRoot = DefaultStoreRoot(); }
             if (string.IsNullOrEmpty(target) ||
                 !Uri.TryCreate(target, UriKind.Absolute, out Uri uri) ||
                 (uri.Scheme != "http" && uri.Scheme != "https") ||
-                !IsAllowed(uri.Host))
+                !IsAllowed(uri.Host, storeRoot))
             {
                 await WriteResponse(s, 403, "Forbidden", "application/json; charset=utf-8",
                     Encoding.UTF8.GetBytes("{\"error\":\"url 缺失或不在白名单内\"}"), CorsHeaders);
@@ -558,13 +604,23 @@ namespace InkRead
                    name.StartsWith("x-ink", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool IsAllowed(string host)
+        private static bool IsAllowed(string host, string storeRoot)
         {
             if (string.IsNullOrEmpty(host)) return false;
             foreach (string h in AllowHosts)
                 if (string.Equals(host, h, StringComparison.OrdinalIgnoreCase)) return true;
             foreach (string suffix in AllowHostSuffixes)
                 if (host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return true;
+            /* 用户自定义白名单（<存档目录>/proxy-allow.txt） */
+            string h2 = host.ToLowerInvariant();
+            foreach (string e in ExtraAllow(storeRoot))
+            {
+                if (e.StartsWith("*.", StringComparison.Ordinal))
+                {
+                    if (h2.EndsWith(e.Substring(1), StringComparison.Ordinal)) return true;
+                }
+                else if (h2 == e) return true;
+            }
             return false;
         }
 

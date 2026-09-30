@@ -115,15 +115,17 @@ InkRead.exe
 ## 4. 关键机制与不变量（改代码前必读）
 
 1. **本地转发 `GET/POST /__proxy?url=<encoded>`**
-   - 白名单（**两端必须同步**）：`LocalServer.AllowHosts/AllowHostSuffixes` ↔ `serve.py ALLOW_HOSTS/ALLOW_HOST_SUFFIXES`
-     ↔ `desktop-bridge.js` 的 `HOSTS`。当前为：`openapi.youdao.com`、`tmt.tencentcloudapi.com`、
-     `dashscope.aliyuncs.com`、`ark.cn-beijing.volces.com`、`edge.microsoft.com`、
-     `api.cognitive.microsofttranslator.com`、`translate.googleapis.com`、`api.mymemory.translated.net`（+ 后缀 `.aliyuncs.com`）。
+   - 白名单（**三处必须同步**）：`LocalServer.AllowHosts/AllowHostSuffixes` ↔ `serve.py ALLOW_HOSTS/ALLOW_HOST_SUFFIXES`
+     ↔ `desktop-bridge.js` 的 `HOSTS`。当前为：有道、腾讯、阿里百炼、火山方舟、DeepL(api-free/api)、微软翻译、
+     LibreTranslate 公开实例（+ 后缀 `.aliyuncs.com`、`.libretranslate.com`）。
+   - **用户自定义白名单**：`<存档目录>/proxy-allow.txt`（每行一个域名；`*.x.com` 后缀匹配），
+     用于自建的 LibreTranslate 等；**按目录缓存 5 秒**（改完立即生效）；目录取自请求的 `root` 参数
+     （`translate.js → apiFetch()` 会带上 `settings.storageDir`），缺省用默认目录。
    - 前端出口统一在 `translate.js → apiFetch()`：探测 `/__proxy?ping=1` 成功就走转发，否则直连。
    - 新增引擎时四件事一起改：白名单（三处）、`settings.js` 卡片与 `filled`、`translate.js` 实现、`_engines`/auto 链。
-2. **翻译引擎选型约定**：优先「只要一个 API Key」的服务（阿里百炼、火山方舟走 OpenAI 兼容端点，
-   `_chatTranslate()` 是共用实现）；不要引入需要 AccessKey/Secret 对或 AK/SK+项目 ID 的接口（已按要求移除百度、华为）。
-   卡片文案不要写"免费额度"（会过期失真）。
+2. **翻译引擎选型约定**：优先「只要一个 API Key」的服务（阿里百炼、火山方舟、DeepL、微软、LibreTranslate）；
+   不要引入需要 AccessKey/Secret 对或 AK/SK+项目 ID 的接口（已按要求移除百度、华为）。
+   卡片文案不要写"免费额度"（会过期失真）；被移除的引擎（华为/百度）的介绍文案要一并清干净。
 2. **磁盘存档 `GET/POST /__store/{ping,read,write,list,open}`**
    - `root` 参数为空 → 默认「我的文档\InkRead」；相对路径禁止 `..`、盘符。
    - 前端 `filestore.js` 通过**挂钩**实现自动存档：包装 `IR.settings.save`、`IR.vocab.mark/removeWord/bulkMark/bulkRemove`、

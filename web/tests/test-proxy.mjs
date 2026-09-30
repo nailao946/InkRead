@@ -60,5 +60,28 @@ try {
   check('目录穿越防护', r.status === 404 || r.status === 400, 'status=' + r.status);
 } catch (e) { check('目录穿越防护', false, e.message); }
 
+/* 7. 用户自定义白名单（<存档目录>/proxy-allow.txt）：精确域名与后缀两种形式 */
+import { mkdtempSync, writeFileSync, rmSync } from 'fs';
+import os from 'os';
+import path from 'path';
+const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'ink-proxy-allow-'));
+writeFileSync(path.join(tmpRoot, 'proxy-allow.txt'), '# 自定义允许\nself-hosted.example\n*.wild.example\n');
+const rootQ = '&root=' + encodeURIComponent(tmpRoot);
+try {
+  /* 7a. 默认（不带 root）时仍是 403 */
+  const r0 = await fetch(BASE + '/__proxy?url=' + encodeURIComponent('https://self-hosted.example/'));
+  check('未带存档目录时仍拒绝', r0.status === 403, 'status=' + r0.status);
+  /* 7b. 带 root 且域名在 proxy-allow.txt 里 → 放行（域名不通会 502，关键是不再是 403） */
+  const r1 = await fetch(BASE + '/__proxy?url=' + encodeURIComponent('https://self-hosted.example/') + rootQ);
+  check('自定义白名单放行精确域名', r1.status !== 403, 'status=' + r1.status);
+  /* 7c. 后缀形式：sub.wild.example 也应放行 */
+  const r2 = await fetch(BASE + '/__proxy?url=' + encodeURIComponent('https://sub.wild.example/') + rootQ);
+  check('自定义白名单放行后缀域名', r2.status !== 403, 'status=' + r2.status);
+  /* 7d. 不在文件里的域名仍拒绝 */
+  const r3 = await fetch(BASE + '/__proxy?url=' + encodeURIComponent('https://other.example/') + rootQ);
+  check('未列入的域名仍拒绝', r3.status === 403, 'status=' + r3.status);
+} catch (e) { check('自定义白名单', false, e.message); }
+rmSync(tmpRoot, { recursive: true, force: true });
+
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);

@@ -163,7 +163,10 @@ IR.translate = {
           init.headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
         }
       }
-      return fetch('__proxy?url=' + encodeURIComponent(url), init);
+      /* 带上存档目录：让 /__proxy 的自定义白名单（proxy-allow.txt）跟随用户设置的存储路径 */
+      const dir = ((IR.settings.data.storageDir || '') + '').trim();
+      const rootQ = dir ? '&root=' + encodeURIComponent(dir) : '';
+      return fetch('__proxy?url=' + encodeURIComponent(url) + rootQ, init);
     }
     return fetch(url, opts);
   },
@@ -209,6 +212,90 @@ IR.translate = {
       }
     }
     return this._youdaoCall(q, apiKey, secret);
+  },
+
+  /* ---------- DeepL（API Free / Pro 自动判断，只要一个 API Key） ----------
+     API Key：deepl.com → 账户 → API 密钥（免费版 Key 以 :fx 结尾）
+     自动按 Key 后缀选 api-free / api，失败再换另一个。 */
+  async deepl(q) {
+    const c = IR.settings.data.api.deepl || {};
+    const key = (c.apiKey || '').trim();
+    if (!key) throw new Error('未配置 DeepL：设置 → 翻译接口 填 API Key');
+    const hosts = key.endsWith(':fx')
+      ? ['https://api-free.deepl.com', 'https://api.deepl.com']
+      : ['https://api.deepl.com', 'https://api-free.deepl.com'];
+    const body = new URLSearchParams({ text: q, source_lang: 'EN', target_lang: 'ZH' });
+    let lastErr = '未知错误';
+    for (const base of hosts) {
+      let j;
+      try {
+        const r = await this.apiFetch(base + '/v2/translate', {
+          method: 'POST',
+          headers: { 'Authorization': 'DeepL-Auth-Key ' + key, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body
+        });
+        if (r.status === 401 || r.status === 403) { lastErr = 'API Key 无效（HTTP ' + r.status + '）'; continue; }
+        if (r.status === 456) { lastErr = '本月额度已用完（HTTP 456）'; continue; }
+        if (!r.ok) { lastErr = 'HTTP ' + r.status; continue; }
+        j = await r.json();
+      } catch (e) { throw new Error('DeepL 请求失败（网络不通或未启用本地转发）'); }
+      const t = j.translations && j.translations[0] && j.translations[0].text;
+      if (!t) { lastErr = '返回空结果'; continue; }
+      return { engine: 'DeepL', text: String(t).trim() };
+    }
+    throw new Error('DeepL：' + lastErr);
+  },
+
+  /* ---------- 微软翻译（Azure 认知服务：Key + 可选区域） ----------
+     Azure 门户 → 翻译服务资源 → 「密钥和终结点」里的 KEY 1；多服务/区域资源需填区域（如 eastasia）。 */
+  async ms(q) {
+    const c = IR.settings.data.api.ms || {};
+    const key = (c.apiKey || '').trim();
+    if (!key) throw new Error('未配置微软翻译：设置 → 翻译接口 填 API Key');
+    const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': key };
+    const region = (c.region || '').trim();
+    if (region) headers['Ocp-Apim-Subscription-Region'] = region;
+    let j;
+    try {
+      const r = await this.apiFetch(
+        'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=zh-Hans',
+        { method: 'POST', headers, body: JSON.stringify([{ Text: q }]) });
+      j = await r.json();
+    } catch (e) { throw new Error('微软翻译请求失败（网络不通或未启用本地转发）'); }
+    if (j && j.error) {
+      const code = j.error.code || '';
+      const hint = code === 401001 || code === 401000
+        ? '（Key 无效或区域不匹配：多服务/区域资源必须在设置里填区域，如 eastasia）' : '';
+      throw new Error('微软翻译 ' + code + '：' + (j.error.message || '') + hint);
+    }
+    const t = j && j[0] && j[0].translations && j[0].translations[0] && j[0].translations[0].text;
+    return { engine: '微软翻译', text: String(t || '（无结果）').trim() };
+  },
+
+  /* ---------- LibreTranslate（开源，可自建；公开实例通常需要 Key） ----------
+     地址可填公开实例或你自建的实例（如 http://localhost:5000）；
+     自建实例可留空 API Key。自建域名若不在转发白名单内，
+     把它加到 <存档目录>/proxy-allow.txt（每行一个域名，后缀写 *.example.com）。 */
+  async libre(q) {
+    const c = IR.settings.data.api.libre || {};
+    let base = (c.url || '').trim() || 'https://libretranslate.com';
+    base = base.replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(base)) base = 'https://' + base;
+    const body = { q, source: 'en', target: 'zh', format: 'text' };
+    const key = (c.apiKey || '').trim();
+    if (key) body.api_key = key;
+    let j;
+    try {
+      const r = await this.apiFetch(base + '/translate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      j = await r.json();
+    } catch (e) {
+      throw new Error('LibreTranslate 请求失败（地址不通、未启用本地转发，或该域名不在转发白名单内）');
+    }
+    if (j.error) throw new Error('LibreTranslate：' + j.error);
+    if (!j.translatedText) throw new Error('LibreTranslate 返回空结果（公开实例可能需要 API Key）');
+    return { engine: 'LibreTranslate', text: String(j.translatedText).trim() };
   },
 
   /* ---------- 免费内置引擎（无需 Key） ----------
@@ -275,11 +362,12 @@ IR.translate = {
   },
 
   /* ---------- 统一入口 ---------- */
-  _engines: ['youdao', 'tencent', 'aliyun', 'volcano', 'google', 'bing', 'mymemory'],
+  _engines: ['youdao', 'tencent', 'aliyun', 'volcano', 'deepl', 'ms', 'libre', 'google', 'bing', 'mymemory'],
   async run(q, engine) {
     const e = engine || IR.settings.data.api.engine || 'auto';
     if (this._engines.indexOf(e) >= 0) return this[e](q);
-    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 火山方舟），最后兜底免费 MyMemory */
+    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 火山方舟 → DeepL → 微软 → LibreTranslate），
+       最后兜底免费 MyMemory */
     const api = IR.settings.data.api;
     const chain = [];
     const y = api.youdao || {};
@@ -290,6 +378,12 @@ IR.translate = {
     if (al.apiKey) chain.push('aliyun');
     const v = api.volcano || {};
     if (v.apiKey) chain.push('volcano');
+    const dp = api.deepl || {};
+    if (dp.apiKey) chain.push('deepl');
+    const ms = api.ms || {};
+    if (ms.apiKey) chain.push('ms');
+    const lb = api.libre || {};
+    if (lb.url || lb.apiKey) chain.push('libre');
     chain.push('mymemory');
 
     const errs = [];

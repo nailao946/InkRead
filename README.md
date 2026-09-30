@@ -49,11 +49,12 @@ READ/
 - **字体排版**：字号 / 行距 / 字体（衬线·无衬线·楷体）实时调整；**阅读进度条**（底部百分比，双模式记忆）
 - **全文朗读**：句级队列 + 当前段高亮；**点词自动发音**（可设置开关）
 - **划词翻译**（双端可用）：
-  - 官方接口 4 家：**有道智云**（三字段 + 签名）、**腾讯云 TMT**（SecretId/SecretKey）、
-    **阿里云百炼**（**只要一个 API Key**，OpenAI 兼容端点，默认 qwen-plus）、
-    **火山方舟 · 豆包大模型**（**只要一个 API Key**，OpenAI 兼容端点）
+  - 官方接口 6 家：**有道智云**（三字段 + 签名）、**腾讯云 TMT**（SecretId/SecretKey）、
+    **阿里云百炼**（**只要一个 API Key**，默认 qwen-plus）、**火山方舟 · 豆包**（**只要一个 API Key**）、
+    **DeepL**（**只要一个 API Key**，Free/Pro 自动判断）、**微软翻译 Azure**（**Key + 可选区域**）
+  - 开源自建 1 家：**LibreTranslate**（填地址即可，自建域名可写进 `存档目录/proxy-allow.txt` 放行）
   - 免费内置 3 家（无需 Key）：MyMemory（国内直连）、谷歌、必应
-  - 自动模式：已配置的官方接口依次试（有道 → 腾讯 → 阿里百炼 → 火山方舟），失败兜底 MyMemory
+  - 自动模式：已配置的官方接口依次试（有道 → 腾讯 → 阿里 → 火山 → DeepL → 微软 → Libre），失败兜底 MyMemory
   - 每张接口卡可折叠，卡内提供**可点击的「去获取 Key ↗」直达链接**；
     展开一张卡不会影响其他卡（网格顶部对齐，不再互相拉伸）
   - **能用 API Key 的都用 API Key**：阿里、火山只需一个 Key，不用 AccessKey/Secret 对
@@ -72,8 +73,8 @@ READ/
 ## 如何运行（Web 版）
 
 - **最简单**：双击 `web/index.html`。TXT / EPUB / MOBI / 词库导入 + **离线词典查词** 全部可用。
-- **要用有道/百度等官方翻译接口**：双击 `web/start-server.bat`（内置本地转发服务，绕开浏览器 CORS）。
-  浏览器不允许网页直连有道/百度接口，本地服务代为转发，因此**网页版也能用官方接口**。
+- **要用官方翻译接口**：双击 `web/start-server.bat`（内置本地转发服务，绕开浏览器 CORS）。
+  浏览器不允许网页直连官方接口，本地服务代为转发，因此**网页版也能用官方接口**。
   也可手动运行：`python web/tools/serve.py [端口]`。
 - **PDF 导入建议**：同样用 `web/start-server.bat`，PDF 解析 worker 需要 HTTP 环境。
 - **快速体验**：打开 `web/index.html?demo=1` 自动载入示例文章。
@@ -84,7 +85,7 @@ READ/
 - **自包含**：前端资源（含 51MB 词典分片）在编译时全部内嵌进 `InkRead.dll`，
   运行时不需要 web 文件夹、不依赖外部服务器；内置本地服务把内嵌资源以 `http://127.0.0.1:端口`
   提供给 WebView2（因此 Service Worker / IndexedDB / PDF Worker / TTS 均为标准行为），
-  同一服务还提供 `/__proxy` 转发端点，桌面版可直接使用有道、百度等官方接口。
+  同一服务还提供 `/__proxy` 转发端点，桌面版可直接使用官方翻译接口。
 - **要编译**：VS 2022 打开 `wpf/InkRead.slnx`（17.10+）或 `InkRead.sln`（老版本），F5 运行；
   或命令行 `dotnet build wpf/InkRead.slnx -c Release`。
   发布单文件：`dotnet publish wpf/InkRead.slnx -c Release -p:PublishSingleFile=true`。

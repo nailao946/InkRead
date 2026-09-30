@@ -14,6 +14,9 @@ IR.settingsPage = {
       tencent: c => !!(c.secretId && c.secretKey),
       aliyun: c => !!c.apiKey,
       volcano: c => !!c.apiKey,
+      deepl: c => !!c.apiKey,
+      ms: c => !!c.apiKey,
+      libre: c => !!(c.url || c.apiKey),
       mymemory: () => true, google: () => true, bing: () => true,
       proxy: c => !!(c.on && c.url)
     };
@@ -79,6 +82,11 @@ IR.settingsPage = {
                 <option value="tencent" ${s.api.engine === 'tencent' ? 'selected' : ''}>腾讯云 TMT</option>
                 <option value="aliyun" ${s.api.engine === 'aliyun' ? 'selected' : ''}>阿里云百炼</option>
                 <option value="volcano" ${s.api.engine === 'volcano' ? 'selected' : ''}>火山方舟 · 豆包</option>
+                <option value="deepl" ${s.api.engine === 'deepl' ? 'selected' : ''}>DeepL</option>
+                <option value="ms" ${s.api.engine === 'ms' ? 'selected' : ''}>微软翻译（Azure）</option>
+              </optgroup>
+              <optgroup label="开源 / 自建">
+                <option value="libre" ${s.api.engine === 'libre' ? 'selected' : ''}>LibreTranslate</option>
               </optgroup>
               <optgroup label="免费内置（无需 Key）">
                 <option value="mymemory" ${s.api.engine === 'mymemory' ? 'selected' : ''}>MyMemory（国内直连）</option>
@@ -117,6 +125,23 @@ IR.settingsPage = {
               ['API Key', 'apiKey', 'console.volcengine.com/ark → API Key', true],
               ['模型', 'model', '留空用 doubao-seed-1-6；也可填接入点 ID（ep-…）']
             ], '只要一个 API Key', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
+            ${card('deepl', 'DeepL（API Free / Pro）', [
+              ['API Key', 'apiKey', '免费版 Key 以 :fx 结尾；自动选 api-free / api', true]
+            ], '只要一个 API Key', ['DeepL 账户 → API 密钥', 'https://www.deepl.com/your-account/keys'])}
+            ${card('ms', '微软翻译（Azure）', [
+              ['API Key', 'apiKey', 'Azure 翻译资源 → 密钥和终结点 → KEY 1', true],
+              ['区域', 'region', '多服务/区域资源必填，如 eastasia；全局资源可空']
+            ], '只要一个 API Key（+区域）', ['Azure 翻译服务', 'https://portal.azure.com/'])}
+          </div>
+        </div>
+
+        <div class="api-group">
+          <div class="api-group-title">开源 / 自建</div>
+          <div class="api-grid">
+            ${card('libre', 'LibreTranslate', [
+              ['服务地址', 'url', '留空用 libretranslate.com；自建可填 http://localhost:5000'],
+              ['API Key', 'apiKey', '自建实例通常留空；公开实例多数需要', true]
+            ], '可自建、可离线部署', ['LibreTranslate 官网', 'https://libretranslate.com/'])}
           </div>
         </div>
 
@@ -167,6 +192,10 @@ IR.settingsPage = {
             <p><b>腾讯云</b>：<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener">访问管理 → API 密钥</a> 取 SecretId / SecretKey；地域默认 ap-guangzhou。腾讯云没有纯 API Key 方案，只能用密钥对。</p>
             <p><b>阿里云百炼</b>：<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener">百炼控制台 → API-KEY</a>，<b>只要一个 API Key</b>（形如 sk-…），不需要 AccessKey；模型留空用 qwen-plus。</p>
             <p><b>火山方舟（豆包大模型）</b>：<a href="https://console.volcengine.com/ark" target="_blank" rel="noopener">方舟控制台 → API Key</a>，<b>只要一个 API Key</b>；模型填你已开通的模型名或接入点 ID（ep-…），留空用内置默认。</p>
+            <p><b>DeepL</b>：<a href="https://www.deepl.com/your-account/keys" target="_blank" rel="noopener">DeepL 账户 → API 密钥</a>，<b>只要一个 API Key</b>；免费版 Key 以 <code>:fx</code> 结尾，程序会自动选 api-free / api 端点。</p>
+            <p><b>微软翻译（Azure）</b>：<a href="https://portal.azure.com/" target="_blank" rel="noopener">Azure 门户</a> 创建「翻译服务」资源 → 密钥和终结点 → KEY 1；<b>多服务/区域资源必须填区域</b>（如 eastasia），全局资源可留空。</p>
+            <p><b>LibreTranslate</b>：<a href="https://libretranslate.com/" target="_blank" rel="noopener">官方实例</a> 或你自建的实例（Docker 一条命令即可）；自建通常不需要 Key。
+            自建域名若不在转发白名单里，把它写进 <code>&lt;存档目录&gt;/proxy-allow.txt</code>（每行一个域名，带 <code>*.</code> 前缀表示后缀匹配）。</p>
             <p class="settings-note"><b>代理怎么接（桌面版生效）</b>：Clash 默认混合端口 <code>7890</code> → <code>http://127.0.0.1:7890</code>；
             v2rayN 默认 HTTP <code>10809</code> / SOCKS <code>10808</code> → <code>http://127.0.0.1:10809</code> 或 <code>socks5://127.0.0.1:10808</code>（也支持 <code>socks5://</code>）。
             订阅链接只能导入到 Clash / v2rayN 客户端里（软件「订阅」→ 粘贴订阅 URL → 更新），程序不直连订阅。
@@ -192,10 +221,7 @@ IR.settingsPage = {
           <button class="btn" data-store-restore>从存档恢复</button>
           <button class="btn btn-ghost" data-store-reveal>查看存档说明</button>
         </div>
-        <p class="settings-note"><b>自动存档</b>：生词/在学/已学每次变化都写入 <code>vocab.csv</code>（Excel / WPS 双击即开）
-        与 <code>vocab.json</code>；导入的书籍写入 <code>books/&lt;书名&gt;.json</code>；
-        设置与接口 Key 写入 <code>settings.json</code>（等同于「配置文件」，换端直接替换它即可）。
-        重开程序会自动读取存档还原。桌面版与 <code>start-server.bat</code> 启动的网页版均可用；直接双击 index.html 时不可用。</p>
+        <p class="settings-note">生词 / 书籍 / 设置自动写入存档目录，重开自动还原；点「查看存档说明」看文件清单。</p>
       </div>
       <div class="panel settings-section">
         <h3>数据与配置</h3>
@@ -204,13 +230,13 @@ IR.settingsPage = {
           <button class="btn" data-act="import-config">导入配置</button>
           <input type="file" accept=".json" data-cfg-file hidden>
         </div>
-        <p class="settings-note">换电脑 / 换浏览器时，只需导出这个配置文件，在新设备导入即可直接使用（含接口 Key、主题、字体、TTS 等全部设置）。</p>
+        <p class="settings-note">换设备只导这一个文件，导入即用（含接口 Key 与全部设置）。</p>
         <div class="settings-row">
           <button class="btn" data-act="export">导出全量备份（词库+设置）</button>
           <button class="btn" data-act="import-bk">恢复全量备份</button>
           <input type="file" accept=".json" data-bk-file hidden>
         </div>
-        <p class="settings-note">全量备份包含生词库、学习状态与全部设置；恢复后会自动刷新页面。所有数据都只存在本机，不上传。</p>
+        <p class="settings-note">全量备份额外含生词库；恢复后自动刷新。数据只存本机，不上传。</p>
       </div>`;
 
     /* ---------- 主题卡片 ---------- */
@@ -329,7 +355,7 @@ IR.settingsPage = {
       IR.translate.localProxyAvailable().then(ok => {
         lpEl.className = 'api-status ' + (ok ? 'ok' : '');
         lpEl.textContent = ok
-          ? '本地转发：可用 ✓ 官方接口（有道/百度/腾讯/阿里/华为/火山）可直接使用'
+          ? '本地转发：可用 ✓ 官方接口（有道/腾讯/阿里/火山/DeepL/微软/Libre）可直接使用'
           : '本地转发：不可用 —— 网页版请双击 web/start-server.bat 启动（桌面版自带转发，无需设置）';
       });
     }
