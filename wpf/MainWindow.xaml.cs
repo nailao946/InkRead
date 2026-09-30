@@ -251,6 +251,18 @@ namespace InkRead
         /// 所以这里只取 boot 标记本身判断，不要拿整段 JSON 去匹配未转义的引号。
         /// 未启动完成时把 DOM 诊断信息写进日志并弹窗。
         /// </summary>
+        /// <summary>前端启动自检探针（诊断用）：返回 boot/stage/JS 错误/书架渲染情况。</summary>
+        private const string ProbeScript =
+            "(function(){var d=document.documentElement;" +
+            "var e=document.getElementById('js-error');var p=document.getElementById('js-promise-error');" +
+            "return JSON.stringify({boot:d.dataset.boot||'',stage:d.dataset.stage||''," +
+            "bodyLen:(document.body?document.body.innerHTML.length:0)," +
+            "scripts:document.scripts.length," +
+            "shelfCards:document.querySelectorAll('#shelfList .book-card').length," +
+            "groups:document.querySelectorAll('#shelfGroups .group-chip').length," +
+            "store:!!(window.IR&&IR.filestore&&IR.filestore.ready)," +
+            "jsErr:e?e.textContent:'',promiseErr:p?p.textContent:''});})()";
+
         private async Task VerifyBootAsync()
         {
             try
@@ -263,18 +275,15 @@ namespace InkRead
                     Log("启动自检: boot=" + boot);
                     if (boot != null && boot.IndexOf('1') >= 0)
                     {
+                        /* 启动成功也记一条详情：便于确认前端无 JS 错误、书架已渲染 */
+                        string ok = await webView.CoreWebView2.ExecuteScriptAsync(ProbeScript);
+                        Log("启动自检详情: " + ok);
                         SetStatus("已就绪 · 官方接口走本地转发");
                         return;
                     }   /* 返回形如 "1" */
                 }
 
-                const string probe =
-                    "(function(){var d=document.documentElement;" +
-                    "var e=document.getElementById('js-error');var p=document.getElementById('js-promise-error');" +
-                    "return JSON.stringify({boot:d.dataset.boot||'',stage:d.dataset.stage||''," +
-                    "bodyLen:(document.body?document.body.innerHTML.length:0)," +
-                    "scripts:document.scripts.length,jsErr:e?e.textContent:'',promiseErr:p?p.textContent:''});})()";
-                string detail = await webView.CoreWebView2.ExecuteScriptAsync(probe);
+                string detail = await webView.CoreWebView2.ExecuteScriptAsync(ProbeScript);
                 Log("启动自检详情: " + detail);
 
                 MessageBox.Show(

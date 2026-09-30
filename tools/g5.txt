@@ -1,0 +1,17 @@
+﻿docs_and_tests_tracked:
+.gitignore
+HANDOVER.md
+README.en.md
+README.md
+web/js/filestore.js
+web/tests/test-shelf.mjs
+web/tests/test-store.mjs
+wpf/README.md
+status:
+ M wpf/MainWindow.xaml.cs
+?? tools/build-run.txt
+?? tools/g4.txt
+commit:
+f212e59 feat: 澧ㄨ InkRead 鈥?Web 鐗?+ WPF 妗岄潰鐗?
+branch=main
+files=122
