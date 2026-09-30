@@ -65,13 +65,14 @@ READ/
 - **Read-aloud**: sentence-level queue with the current paragraph highlighted; optional auto-pronounce
   when tapping a word
 - **Translation** (works on both front-ends):
-  - 6 official APIs: Youdao, Baidu, **Tencent Cloud TMT, Alibaba Cloud MT, Huawei Cloud MT, Volcano
-    Engine** (each with its own signature scheme: TC3-HMAC-SHA256 / RPC HMAC-SHA1 /
-    SDK-HMAC-SHA256 / HMAC-SHA256-v4)
+  - 4 official APIs: **Youdao** (three fields + signature), **Tencent Cloud TMT** (SecretId/SecretKey),
+    **Alibaba Bailian** (**API Key only**, OpenAI-compatible endpoint, defaults to qwen-plus),
+    **Volcano Ark · Doubao** (**API Key only**, OpenAI-compatible endpoint)
   - 3 free built-ins (no key needed): MyMemory (reachable from mainland China), Google, Bing
-  - Auto mode tries configured official APIs in order, then falls back to MyMemory
-  - Collapsible provider cards with Save / Test buttons and status badges; in-page help for where to
-    obtain each key
+  - Auto mode tries configured official APIs in order (Youdao → Tencent → Bailian → Ark), then falls back to MyMemory
+  - Collapsible provider cards, each with a **clickable “Get a key ↗” link**; expanding one card never
+    stretches its neighbours
+  - **API key first**: Alibaba and Volcano need just one key — no AccessKey/Secret pairs
   - **Auto-translate on word tap** (can be disabled; results are cached in memory)
   - **Local forwarding (essential)**: browsers block direct calls to those APIs with CORS. The
     desktop app ships a forwarder; the web version gets one by launching `web/start-server.bat`
@@ -141,7 +142,7 @@ restored automatically.
 ```
 node tests/test-importers.mjs   # 20/20 TXT encodings, EPUB, MOBI, word lists, lemmatisation, signatures
 node tests/test-bridge.mjs      # 15/15 desktop API bridge (interception, bodies, headers, status, errors, concurrency)
-node tests/test-engines.mjs     # 21/21 six engines, dispatch, auto chain, HMAC vs Node crypto, multi-line rendering
+node tests/test-engines.mjs     # 24/24 four official engines, dispatch, auto chain, API-key-only providers, HMAC vs Node crypto
 node tests/test-store.mjs       # 18/18 on-disk archive against a real server (CSV format, traversal guard, restore)
 node tests/test-dict.mjs        # 8/8  dictionary shards, lookup, lemmatisation, file:// fallback
 node tests/test-shelf.mjs       # 46/46 reading state, groups + icons, reading time, throttling, group frames, difficulty

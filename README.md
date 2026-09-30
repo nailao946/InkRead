@@ -49,15 +49,15 @@ READ/
 - **字体排版**：字号 / 行距 / 字体（衬线·无衬线·楷体）实时调整；**阅读进度条**（底部百分比，双模式记忆）
 - **全文朗读**：句级队列 + 当前段高亮；**点词自动发音**（可设置开关）
 - **划词翻译**（双端可用）：
-  - 官方接口 6 家：有道智云、百度智能云、**腾讯云 TMT、阿里云机器翻译、华为云机器翻译、火山引擎翻译**
-    （各自独立签名：TC3-HMAC-SHA256 / RPC HMAC-SHA1 / SDK-HMAC-SHA256 / HMAC-SHA256-v4）
+  - 官方接口 4 家：**有道智云**（三字段 + 签名）、**腾讯云 TMT**（SecretId/SecretKey）、
+    **阿里云百炼**（**只要一个 API Key**，OpenAI 兼容端点，默认 qwen-plus）、
+    **火山方舟 · 豆包大模型**（**只要一个 API Key**，OpenAI 兼容端点）
   - 免费内置 3 家（无需 Key）：MyMemory（国内直连）、谷歌、必应
-  - 自动模式：已配置的官方接口依次试（有道 → 百度 → 腾讯 → 火山 → 阿里 → 华为），失败兜底 MyMemory
-  - 每张接口卡可折叠，各自带「保存 / 测试」与状态徽标；卡内提供**可点击的「去获取 Key ↗」直达链接**，
+  - 自动模式：已配置的官方接口依次试（有道 → 腾讯 → 阿里百炼 → 火山方舟），失败兜底 MyMemory
+  - 每张接口卡可折叠，卡内提供**可点击的「去获取 Key ↗」直达链接**；
     展开一张卡不会影响其他卡（网格顶部对齐，不再互相拉伸）
+  - **能用 API Key 的都用 API Key**：阿里、火山只需一个 Key，不用 AccessKey/Secret 对
   - **点词自动翻译**：点单词弹窗后自动出译文（设置里可关；带内存缓存）
-  - 有道智云：**应用ID + API Keys + 应用密钥**（三字段对齐官网；签名用应用ID，鉴权失败自动换 API Keys 重试）
-  - 百度智能云：**APP ID + 密钥 + API Keys**（access_token，30 天缓存）
   - **本地转发（关键）**：浏览器直连翻译接口会被 CORS 拦截。桌面版自带转发服务；
     网页版双击 `web/start-server.bat`（`tools/serve.py`）即可——本地服务提供 `/__proxy` 转发端点，
     前端探测到就自动改走它，因此**网页版同样能用官方接口**
@@ -128,7 +128,7 @@ READ/
 ```
 node tests/test-importers.mjs   # 20/20：TXT 编码、EPUB、MOBI（PalmDOC 回溯+尾随裁剪+多字节重叠）、词表、词形还原、翻译签名
 node tests/test-bridge.mjs      # 15/15：桌面版 API 转发桥（拦截/请求体/请求头/状态码/错误路径/并发配对/中文安全）
-node tests/test-engines.mjs     # 21/21：六引擎注册与分派、auto 链顺序、HMAC/hex/base64 与 Node crypto 对拍、多行渲染
+node tests/test-engines.mjs     # 24/24：4 家官方引擎注册与分派、auto 链顺序、只填 API Key 的两家、HMAC 与 Node crypto 对拍
 node tests/test-store.mjs       # 18/18：磁盘存档（真实写文件）——CSV 格式/转义/BOM、settings/书籍读写、路径穿越防护、启动还原、自动挂钩
 node tests/test-dict.mjs        # 8/8：词典分片、lookup、词形还原、file:// 降级
 node tests/test-shelf.mjs       # 46/46：状态推断、分组增删改与图标、阅读时长、进度节流、分组框渲染、词频难度与阶梯档位

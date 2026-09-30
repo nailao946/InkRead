@@ -9,7 +9,9 @@
 
   var HOSTS = [
     'openapi.youdao.com',
-    'aip.baidubce.com',
+    'tmt.tencentcloudapi.com',
+    'dashscope.aliyuncs.com',
+    'ark.cn-beijing.volces.com',
     'edge.microsoft.com',
     'api.cognitive.microsofttranslator.com',
     'translate.googleapis.com',

@@ -10,19 +10,21 @@ import assert from 'assert';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'dict');
+const REAL_DICT = path.join(ROOT, 'dict');   /* 仓库自带的真实分片：fixtures 缺失时回退用它 */
 
 /* 浏览器环境桩（与 test-importers.mjs 一致） */
 globalThis.window = globalThis;
 globalThis.document = { addEventListener() {} };
 
-/* fetch 桩：把 'dict/<letter>.json' 映射到 fixtures，模拟浏览器分片加载 */
+/* fetch 桩：把 'dict/<letter>.json' 映射到 fixtures（优先）或真实分片，模拟浏览器分片加载 */
 function makeFetch(impl) {
   return async (url) => {
     if (impl === 'throw') throw new Error('file protocol not supported');
     const m = String(url).match(/dict\/([a-z]|other)\.json/);
     if (!m) return { ok: false, json: async () => ({}) };
-    const fp = path.join(FIX, m[1] + '.json');
-    if (!existsSync(fp)) return { ok: false, json: async () => ({}) };
+    const cand = [path.join(FIX, m[1] + '.json'), path.join(REAL_DICT, m[1] + '.json')];
+    const fp = cand.find(p => existsSync(p));
+    if (!fp) return { ok: false, json: async () => ({}) };
     const data = JSON.parse(readFileSync(fp, 'utf8'));
     return { ok: true, json: async () => data };
   };

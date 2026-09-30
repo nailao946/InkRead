@@ -40,8 +40,8 @@ check('关键脚本/清单齐全', missing.length === 0, missing.join(','));
 /* 3. 桌面桥在纯浏览器下必须"不接管"（避免网页版走错通道） */
 const bridge = readFileSync(path.join(ROOT, 'js/desktop-bridge.js'), 'utf8');
 check('桌面桥有 chrome.webview 守卫', /if \(!window\.chrome \|\| !window\.chrome\.webview/.test(bridge));
-check('桌面桥覆盖 6 家云厂商域名', ['tmt.tencentcloudapi.com', 'open.volcengineapi.com', 'api.mymemory.translated.net']
-  .every(h => bridge.indexOf(h) >= 0) || /HOSTS = \[/.test(bridge));
+check('桌面桥覆盖官方接口域名', ['tmt.tencentcloudapi.com', 'dashscope.aliyuncs.com', 'ark.cn-beijing.volces.com', 'api.mymemory.translated.net']
+  .every(h => bridge.indexOf(h) >= 0));
 
 /* 4. 本地服务能力：转发 + 存档 + 白名单 */
 try {

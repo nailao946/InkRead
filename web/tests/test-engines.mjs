@@ -21,17 +21,15 @@ const read = p => fs.readFileSync(new URL('../js/' + p, import.meta.url), 'utf8'
 eval(read('util.js'));
 eval(read('translate.js'));
 
-/* 最小 settings 桩（含四家新云厂商默认值） */
+/* 最小 settings 桩（四家官方接口：有道 / 腾讯 / 阿里百炼 / 火山方舟） */
 IR.settings = {
   data: {
     api: {
       engine: 'auto',
       youdao: { key: '', apiKeys: '', secret: '' },
-      baidu: { appid: '', apiKey: '', secretKey: '' },
       tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
-      aliyun: { accessKeyId: '', accessKeySecret: '', region: 'cn-hangzhou' },
-      huawei: { ak: '', sk: '', projectId: '', region: 'cn-north-4' },
-      volcano: { accessKey: '', secretKey: '', region: 'cn-north-1' },
+      aliyun: { apiKey: '', model: '' },
+      volcano: { apiKey: '', model: '' },
       proxy: { on: false, url: '' }
     }
   }
@@ -57,12 +55,25 @@ for (const algo of ['SHA-256', 'SHA-1']) {
 }
 check('_sha256Hex', (await T._sha256Hex('abc')) === crypto.createHash('sha256').update('abc').digest('hex'));
 
-/* 3. 四个新引擎已注册 + 未配置时报错可读 */
-for (const [name, label] of [['tencent', '腾讯云'], ['aliyun', '阿里云'], ['huawei', '华为云'], ['volcano', '火山引擎']]) {
+/* 3. 四家官方引擎已注册 + 未配置时报错可读 */
+const OFFICIAL = [['youdao', '有道'], ['tencent', '腾讯云'], ['aliyun', '阿里云百炼'], ['volcano', '火山方舟']];
+for (const [name, label] of OFFICIAL) {
   check('引擎已注册 ' + name, typeof T[name] === 'function');
+}
+for (const [name, label] of OFFICIAL.slice(1).concat([['youdao', '有道']])) {
   let msg = '';
   try { await T[name]('hello'); } catch (e) { msg = e.message; }
   check('未配置提示 ' + name, msg.indexOf(label) >= 0 && msg.indexOf('未配置') === 0, msg);
+}
+check('已删除的引擎不再存在', !T.baidu && !T.huawei && !T._baiduToken);
+
+/* 3b. 只要 API Key 的两家：字段就是 apiKey */
+IR.settings.data.api.aliyun = { apiKey: '', model: '' };
+IR.settings.data.api.volcano = { apiKey: '', model: '' };
+for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山方舟']]) {
+  let msg = '';
+  try { await T[name]('hello'); } catch (e) { msg = e.message; }
+  check(name + ' 只要求填 API Key', /未配置/.test(msg) && msg.indexOf('API Key') >= 0 && msg.indexOf('AccessKey') < 0, msg);
 }
 
 /* 4. 引擎分派：指定引擎走对应实现 */
@@ -70,29 +81,25 @@ T.mymemory = async () => ({ engine: 'MyMemory', text: '桩' });
 check('run 指定 mymemory', (await T.run('x', 'mymemory')).engine === 'MyMemory');
 check('run 指定 tencent 走 tencent', /未配置/.test(await T.run('x', 'tencent').catch(e => e.message)));
 
-/* 5. auto 链：只配置腾讯云时应优先走腾讯云（失败也不落到 MyMemory 之外） */
+/* 5. auto 链：只配置腾讯云时应优先走腾讯云 */
 IR.settings.data.api.tencent = { secretId: 'id', secretKey: 'key', region: 'ap-guangzhou' };
 let called = [];
-for (const n of ['youdao', 'baidu', 'tencent', 'volcano', 'aliyun', 'huawei', 'mymemory']) {
-  const orig = T[n];
+for (const n of ['youdao', 'tencent', 'aliyun', 'volcano', 'mymemory']) {
   T[n] = async () => { called.push(n); if (n === 'tencent') return { engine: '腾讯云', text: 'ok' }; throw new Error(n + ' 失败'); };
-  void orig;
 }
 const autoRes = await T.run('x', 'auto');
 check('auto 优先命中已配置的腾讯云', autoRes.engine === '腾讯云' && called[0] === 'tencent', called.join('→'));
 
-/* 6. 有道→百度→腾讯 顺序（三家都配置时） */
-T.youdao = async () => { throw new Error('有道失败'); };
-T.baidu = async () => { throw new Error('百度失败'); };
+/* 6. auto 顺序：有道 → 腾讯 → 阿里（三家都配置时） */
 called = [];
 IR.settings.data.api.youdao = { key: 'k', apiKeys: '', secret: 's' };
-IR.settings.data.api.baidu = { appid: '', apiKey: 'k', secretKey: 's' };
-for (const n of ['youdao', 'baidu', 'tencent', 'volcano', 'aliyun', 'huawei', 'mymemory']) {
+IR.settings.data.api.aliyun = { apiKey: 'sk-x', model: '' };
+for (const n of ['youdao', 'tencent', 'aliyun', 'volcano', 'mymemory']) {
   const label = n;
-  T[n] = async () => { called.push(label); if (label === 'tencent') return { engine: '腾讯云', text: 'ok' }; throw new Error(label); };
+  T[n] = async () => { called.push(label); if (label === 'aliyun') return { engine: '阿里云百炼', text: 'ok' }; throw new Error(label); };
 }
 const r6 = await T.run('x', 'auto');
-check('auto 顺序 有道→百度→腾讯', r6.engine === '腾讯云' && called.join(',') === 'youdao,baidu,tencent', called.join(','));
+check('auto 顺序 有道→腾讯→阿里', r6.engine === '阿里云百炼' && called.join(',') === 'youdao,tencent,aliyun', called.join(','));
 
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);

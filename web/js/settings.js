@@ -11,11 +11,9 @@ IR.settingsPage = {
     /* 各引擎必填项判断（用于状态徽标） */
     const filled = {
       youdao: c => !!(c.secret && (c.key || c.apiKeys)),
-      baidu: c => !!(c.apiKey && c.secretKey),
       tencent: c => !!(c.secretId && c.secretKey),
-      aliyun: c => !!(c.accessKeyId && c.accessKeySecret),
-      huawei: c => !!(c.ak && c.sk && c.projectId),
-      volcano: c => !!(c.accessKey && c.secretKey),
+      aliyun: c => !!c.apiKey,
+      volcano: c => !!c.apiKey,
       mymemory: () => true, google: () => true, bing: () => true,
       proxy: c => !!(c.on && c.url)
     };
@@ -78,11 +76,9 @@ IR.settingsPage = {
               <option value="auto" ${!s.api.engine || s.api.engine === 'auto' ? 'selected' : ''}>自动（已配置的优先 → 免费兜底）</option>
               <optgroup label="官方接口（需 Key）">
                 <option value="youdao" ${s.api.engine === 'youdao' ? 'selected' : ''}>有道智云</option>
-                <option value="baidu" ${s.api.engine === 'baidu' ? 'selected' : ''}>百度智能云</option>
                 <option value="tencent" ${s.api.engine === 'tencent' ? 'selected' : ''}>腾讯云 TMT</option>
-                <option value="aliyun" ${s.api.engine === 'aliyun' ? 'selected' : ''}>阿里云机器翻译</option>
-                <option value="huawei" ${s.api.engine === 'huawei' ? 'selected' : ''}>华为云机器翻译</option>
-                <option value="volcano" ${s.api.engine === 'volcano' ? 'selected' : ''}>火山引擎翻译</option>
+                <option value="aliyun" ${s.api.engine === 'aliyun' ? 'selected' : ''}>阿里云百炼</option>
+                <option value="volcano" ${s.api.engine === 'volcano' ? 'selected' : ''}>火山方舟 · 豆包</option>
               </optgroup>
               <optgroup label="免费内置（无需 Key）">
                 <option value="mymemory" ${s.api.engine === 'mymemory' ? 'selected' : ''}>MyMemory（国内直连）</option>
@@ -107,33 +103,20 @@ IR.settingsPage = {
               ['应用ID', 'key', '官网「应用ID」'],
               ['API Keys', 'apiKeys', '官网「查看」获取；选填，鉴权失败自动重试'],
               ['应用密钥', 'secret', '官网「应用密钥」', true]
-            ], '每月 5 万字符免费', ['有道智云控制台', 'https://ai.youdao.com/'])}
-            ${card('baidu', '百度智能云', [
-              ['APP ID', 'appid', '官网「APP ID」'],
-              ['密钥', 'secretKey', '官网「密钥」（即 Secret Key）', true],
-              ['API Keys', 'apiKey', '官网「API Keys」（即 API Key）']
-            ], '每月 5 万字符免费', ['百度智能云机器翻译', 'https://console.bce.baidu.com/ai-engine/mt/app/list'])}
+            ], '官方三字段', ['有道智云控制台', 'https://ai.youdao.com/'])}
             ${card('tencent', '腾讯云 TMT', [
               ['SecretId', 'secretId', '访问管理 → API 密钥'],
               ['SecretKey', 'secretKey', '访问管理 → API 密钥', true],
               ['地域', 'region', '默认 ap-guangzhou']
-            ], '每月 500 万字符免费', ['腾讯云 API 密钥', 'https://console.cloud.tencent.com/cam/capi'])}
-            ${card('aliyun', '阿里云机器翻译', [
-              ['AccessKey ID', 'accessKeyId', 'RAM → 访问密钥'],
-              ['AccessKey Secret', 'accessKeySecret', 'RAM → 访问密钥', true],
-              ['地域', 'region', '默认 cn-hangzhou']
-            ], '每月 100 万字符免费', ['阿里云访问密钥', 'https://ram.console.aliyun.com/manage/ak'])}
-            ${card('huawei', '华为云机器翻译', [
-              ['AK', 'ak', '我的凭证 → 访问密钥'],
-              ['SK', 'sk', '我的凭证 → 访问密钥', true],
-              ['项目 ID', 'projectId', '我的凭证 → 项目列表'],
-              ['地域', 'region', '默认 cn-north-4']
-            ], '需项目 ID', ['华为云我的凭证', 'https://console.huaweicloud.com/iam/'])}
-            ${card('volcano', '火山引擎翻译', [
-              ['AccessKey', 'accessKey', '访问控制 → API 访问密钥'],
-              ['SecretKey', 'secretKey', '访问控制 → API 访问密钥', true],
-              ['地域', 'region', '默认 cn-north-1']
-            ], '每月 200 万字符免费', ['火山引擎 API 密钥', 'https://console.volcengine.com/iam/keymanage/'])}
+            ], '无 API Key 方案，只能用密钥', ['腾讯云 API 密钥', 'https://console.cloud.tencent.com/cam/capi'])}
+            ${card('aliyun', '阿里云百炼（API Key）', [
+              ['API Key', 'apiKey', 'bailian.console.aliyun.com → API-KEY（sk-…）', true],
+              ['模型', 'model', '留空用 qwen-plus；可填 qwen-turbo 等']
+            ], '只要一个 API Key', ['百炼 API-KEY 页面', 'https://bailian.console.aliyun.com/'])}
+            ${card('volcano', '火山方舟 · 豆包（API Key）', [
+              ['API Key', 'apiKey', 'console.volcengine.com/ark → API Key', true],
+              ['模型', 'model', '留空用 doubao-seed-1-6；也可填接入点 ID（ep-…）']
+            ], '只要一个 API Key', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
           </div>
         </div>
 
@@ -181,11 +164,9 @@ IR.settingsPage = {
           <summary>怎么申请 Key / 哪些是必填（点开看）</summary>
           <div class="api-help-body">
             <p><b>有道智云</b>：<a href="https://ai.youdao.com/" target="_blank" rel="noopener">ai.youdao.com</a> → 应用总览 → 查看应用，取「应用ID + API Keys + 应用密钥」，三行都填上最稳（签名用应用ID，鉴权失败会自动换 API Keys 重试）。</p>
-            <p><b>百度智能云</b>：<a href="https://console.bce.baidu.com/ai-engine/mt/app/list" target="_blank" rel="noopener">机器翻译控制台</a> → 创建应用，取「APP ID + 密钥 + API Keys」（翻译鉴权实际用 API Keys 与密钥）。</p>
-            <p><b>腾讯云</b>：<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener">访问管理 → API 密钥</a> 取 SecretId / SecretKey；地域默认 ap-guangzhou 即可。</p>
-            <p><b>阿里云</b>：<a href="https://ram.console.aliyun.com/manage/ak" target="_blank" rel="noopener">RAM → 访问密钥</a> 取 AccessKey ID / Secret；地域默认 cn-hangzhou。</p>
-            <p><b>华为云</b>：<a href="https://console.huaweicloud.com/iam/" target="_blank" rel="noopener">我的凭证</a> 取「访问密钥（AK/SK）」与「项目 ID」，<b>三项都必填</b>。</p>
-            <p><b>火山引擎</b>：<a href="https://console.volcengine.com/iam/keymanage/" target="_blank" rel="noopener">访问控制 → API 访问密钥</a> 取 AccessKey / SecretKey；地域默认 cn-north-1。</p>
+            <p><b>腾讯云</b>：<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener">访问管理 → API 密钥</a> 取 SecretId / SecretKey；地域默认 ap-guangzhou。腾讯云没有纯 API Key 方案，只能用密钥对。</p>
+            <p><b>阿里云百炼</b>：<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener">百炼控制台 → API-KEY</a>，<b>只要一个 API Key</b>（形如 sk-…），不需要 AccessKey；模型留空用 qwen-plus。</p>
+            <p><b>火山方舟（豆包大模型）</b>：<a href="https://console.volcengine.com/ark" target="_blank" rel="noopener">方舟控制台 → API Key</a>，<b>只要一个 API Key</b>；模型填你已开通的模型名或接入点 ID（ep-…），留空用内置默认。</p>
             <p class="settings-note"><b>代理怎么接（桌面版生效）</b>：Clash 默认混合端口 <code>7890</code> → <code>http://127.0.0.1:7890</code>；
             v2rayN 默认 HTTP <code>10809</code> / SOCKS <code>10808</code> → <code>http://127.0.0.1:10809</code> 或 <code>socks5://127.0.0.1:10808</code>（也支持 <code>socks5://</code>）。
             订阅链接只能导入到 Clash / v2rayN 客户端里（软件「订阅」→ 粘贴订阅 URL → 更新），程序不直连订阅。

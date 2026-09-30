@@ -42,19 +42,17 @@ DEFAULT_PORT = 8642
 # 允许转发的目标域名（与桌面版 LocalServer.cs 保持一致）
 ALLOW_HOSTS = {
     'openapi.youdao.com',
-    'aip.baidubce.com',
     'edge.microsoft.com',
     'api.cognitive.microsofttranslator.com',
     'translate.googleapis.com',
     'api.mymemory.translated.net',
     'tmt.tencentcloudapi.com',
-    'open.volcengineapi.com',
-    'mt.aliyuncs.com',
+    'dashscope.aliyuncs.com',
+    'ark.cn-beijing.volces.com',
 }
 
-# 地域化域名的后缀白名单（如 mt.cn-north-4.myhuaweicloud.com、mt.cn-hangzhou.aliyuncs.com）
+# 地域化域名的后缀白名单（如 dashscope-intl.aliyuncs.com）
 ALLOW_HOST_SUFFIXES = (
-    '.myhuaweicloud.com',
     '.aliyuncs.com',
 )
 

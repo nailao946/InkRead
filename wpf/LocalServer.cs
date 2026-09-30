@@ -31,20 +31,18 @@ namespace InkRead
         private static readonly string[] AllowHosts =
         {
             "openapi.youdao.com",
-            "aip.baidubce.com",
             "edge.microsoft.com",
             "api.cognitive.microsofttranslator.com",
             "translate.googleapis.com",
             "api.mymemory.translated.net",
             "tmt.tencentcloudapi.com",
-            "open.volcengineapi.com",
-            "mt.aliyuncs.com"
+            "dashscope.aliyuncs.com",
+            "ark.cn-beijing.volces.com"
         };
 
         private static readonly string[] AllowHostSuffixes =
         {
-            ".myhuaweicloud.com",   /* 华为云机器翻译：mt.{region}.myhuaweicloud.com */
-            ".aliyuncs.com"         /* 阿里云：mt.{region}.aliyuncs.com */
+            ".aliyuncs.com"         /* 阿里云地域化域名（如 dashscope-intl.aliyuncs.com） */
         };
 
         private static readonly Dictionary<string, string> Mime =

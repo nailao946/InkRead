@@ -61,13 +61,11 @@ IR.bookStore = {
 IR.settings = {
   data: { theme: '0', colors: null, tts: { voiceURI: '', rate: 0.9, autoSpeak: true }, api: {
     youdao: { key: '', apiKeys: '', secret: '' },
-    baidu: { appid: '', apiKey: '', secretKey: '' },
     tencent: { secretId: '', secretKey: '', region: 'ap-guangzhou' },
-    aliyun: { accessKeyId: '', accessKeySecret: '', region: 'cn-hangzhou' },
-    huawei: { ak: '', sk: '', projectId: '', region: 'cn-north-4' },
-    volcano: { accessKey: '', secretKey: '', region: 'cn-north-1' },
+    aliyun: { apiKey: '', model: '' },
+    volcano: { apiKey: '', model: '' },
     proxy: { on: false, url: '' }, engine: 'auto'
-  }, reader: { fontSize: 18, lineHeight: 2.0, fontFamily: 'serif', autoTranslate: true }, storageDir: '', shelf: { groups: [] }, tocPinned: false },
+  }, reader: { fontSize: 18, lineHeight: 2.0, fontFamily: 'serif', autoTranslate: true }, storageDir: '', shelf: { groups: [] }, finder: { custom: '', last: 'gutenberg' }, tocPinned: false },
   load() {
     try {
       const raw = localStorage.getItem('ir.settings');
