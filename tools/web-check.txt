@@ -1,0 +1,22 @@
+﻿=== WEB 端完整性 ===
+PASS index.html 寮曠敤璧勬簮鏁?鈮?15 | 18 涓?PASS 寮曠敤璧勬簮鍏ㄩ儴 200 涓?MIME 姝ｇ‘
+PASS 鍏抽敭鑴氭湰/娓呭崟榻愬叏
+PASS 妗岄潰妗ユ湁 chrome.webview 瀹堝崼
+PASS 妗岄潰妗ヨ鐩?6 瀹朵簯鍘傚晢鍩熷悕
+PASS 缈昏瘧杞彂鍙敤 | {"inkproxy":1}
+PASS 纾佺洏瀛樻。鍙敤 | C:\Users\admin\Documents\InkRead
+PASS 杞彂鐧藉悕鍗曠敓鏁堬紙闈炵炕璇戝煙鍚?403锛?| status=403
+PASS 椤甸潰缁撴瀯锛氫功鏋跺垎缁勬潯 #shelfGroups
+PASS 椤甸潰缁撴瀯锛氫功鏋跺垪琛?#shelfList
+PASS 椤甸潰缁撴瀯锛氶槄璇昏鍥?#readingView
+PASS 椤甸潰缁撴瀯锛氳缃寕杞界偣 #settingsMount
+PASS reader 鍚垎缁勬娓叉煋
+PASS reader 鍚毦搴﹁瘎浼帮紙闃舵闃呰娉曪級
+PASS reader 鍚垎缁勫浘鏍囬€夋嫨
+PASS reader 鍚瘝棰戠粺璁?PASS 鏍峰紡鍚垎缁勬涓庡姞绮楄繘搴︽潯
+PASS 鍗＄墖淇℃伅琛屽浐瀹氶珮搴︼紙瀵归綈锛?FAILS=0/18
+
+=== 转发 ===
+FAILS=9/9
+=== 存档 ===
+FAILS=0/18

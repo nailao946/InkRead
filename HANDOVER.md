@@ -131,9 +131,17 @@ InkRead.exe
    阅读时长由 `_flushRead()` 每分钟落库，回到书架 / 页面隐藏 / 关闭时补落。新增高频写库逻辑必须同样节流。
 6. **文本渲染统一用 `IR.escLines()`**——词典数据里存的是**字面量 `\r\n`**（不是真换行），
    直接 `esc()` 会显示成裸 `\n`（历史 bug）。
-7. **样式全部走 CSS 变量**（`--text/--bg-panel/--accent/--success/--danger` 等），不要写死颜色，
+7. **书架两套布局**：`shelfFilter === 'all'` → 分组框（`_groupFrameHtml`，框内横排紧凑卡）；
+   否则 → 网格（`_cardHtml(b,'full')`）。**卡片信息行高度固定**（书名 2.8em/作者 1.35em/meta 1.5em + 进度条 `margin-top:auto`），
+   这样书名长短不同也不会错行——改卡片结构时务必保持固定高度。
+8. **书籍难度统计**：`computeBookStats()` 按「已学=已知 / 在学=半知 / 词库外=生词」口径统计**词次**，
+   `levelOf(coverage)` 给出 4 档（≥98% 轻松 / 95–98% i+1 理想 / 90–95% 教学挑战 / <90% 挫败）；
+   结果缓存在 `book.stats`（含 `topUnknown` 高频生词），点「重新统计」重算。词汇口径依赖 `IR.vocab.statusMap`。
+9. **分组带图标**：`shelf.groups = [{id,name,icon,createdAt}]`；`GROUP_ICONS` 为可选图标集（首项为空串＝无图标）；
+   新建/编辑统一走 `openGroupDialog()`（不要再用 `prompt()`）。
+10. **样式全部走 CSS 变量**（`--text/--bg-panel/--accent/--success/--danger` 等），不要写死颜色，
    否则主题切换会破。
-8. **密钥永不入库**：API Key 只出现在 localStorage 与用户自己的 `settings.json`；`.gitignore` 排除构建产物与真实电子书。
+11. **密钥永不入库**：API Key 只出现在 localStorage 与用户自己的 `settings.json`；`.gitignore` 排除构建产物与真实电子书。
 
 ---
 
@@ -185,7 +193,8 @@ cd tools/server-smoke && dotnet run --project server-smoke.csproj -- "..\..\web"
 | 命令 | 覆盖 |
 |---|---|
 | `node web/tests/test-importers.mjs` | TXT 编码 / EPUB / MOBI（PalmDOC 回溯、尾随裁剪、多字节重叠）/ 词表 / 词形还原 / 签名 |
-| `node web/tests/test-shelf.mjs` | 阅读状态推断、分组增删改、阅读时长累计、进度节流、卡片渲染与筛选 |
+| `node web/tests/test-shelf.mjs` | 阅读状态推断、分组增删改与图标、阅读时长累计、进度节流、分组框/网格渲染、词频统计与阶梯档位 |
+| `node web/tests/test-web.mjs`（需先起 serve.py） | **web 端完整性**：index.html 引用资源可达性与 MIME、关键脚本齐全、转发/存档可用、转发白名单、页面结构、新特性就位、CSS 对齐规则 |
 | `node web/tests/test-engines.mjs` | 6 引擎注册与分派、auto 链顺序、HMAC/hex/base64 与 Node crypto 对拍、多行渲染 |
 | `node web/tests/test-store.mjs`（需先起 serve.py） | 存档：CSV 格式/转义/BOM、settings/书籍读写、路径穿越防护、启动还原、自动挂钩 |
 | `node web/tests/test-proxy.mjs`（需先起 serve.py） | 转发：静态 MIME、有道经转发、白名单拦截、目录穿越 |

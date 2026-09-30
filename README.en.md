@@ -32,14 +32,21 @@ READ/
 - **Vocabulary**: import TXT / CSV / Excel (.xls/.xlsx) / clipboard; export to .xlsx; three-state
   marking (unknown / learning / known); batch operations; search & filter; backup
 - **Shelf**:
-  - **Groups (folder-style)**: chip bar with *All / Ungrouped / custom groups / + New group*; click a
-    chip to filter; “⋯” on a card (or right-click) opens details where you can move the book into a
-    group; right-click a group chip to rename or delete it (books fall back to *Ungrouped*)
-  - **Reading progress**: a percentage plus a progress bar under every book; click it for details
+  - **Group frames (WeChat-Reading style)**: in the *All* view every group gets its own row — a frame
+    header with **icon + name + book count** and a horizontally scrolling row of covers. Click the
+    header to open that group. Icons are optional (choose from 14 presets, or “none”)
+  - **Aligned information**: card rows have fixed heights (title exactly two lines, author and meta one
+    line each), so progress bars and percentages line up no matter how long the titles are
+  - **Reading progress**: thick rounded gradient bar (grey when unread, amber while reading, green when
+    finished) plus a percentage; click it for details
   - **Status badge** on the cover: **Unread / Reading / Finished** (derived from progress, manually
-    overridable in the details dialog)
+    overridable)
   - **Details dialog**: cover, status, progress, **total reading time**, last-read time, date added,
-    finish time, length, group; buttons for resume / change status / delete
+    finish time, length, group; resume / change status / delete
+  - **Vocabulary difficulty (graded reading)**: counts **unknown / learning / known** words in the book
+    plus token coverage, then rates the book (Easy ≥98%, Ideal i+1 95–98%, Challenging 90–95%,
+    Frustrating <90%) with advice, and lists the **top 12 high-frequency unknown words** (one click to
+    add them all to the vocabulary list)
 - **Reader**: EPUB / MOBI / TXT / PDF (including inline images); three-colour highlighting plus
   lemmatisation; tap-a-word popup with pronunciation, dictionary meaning and online translation
 - **MOBI parsing (deep fixes in v0.5)**: PalmDOC *distance* back-referencing, backward-encoded
@@ -134,7 +141,8 @@ node tests/test-bridge.mjs      # 15/15 desktop API bridge (interception, bodies
 node tests/test-engines.mjs     # 21/21 six engines, dispatch, auto chain, HMAC vs Node crypto, multi-line rendering
 node tests/test-store.mjs       # 18/18 on-disk archive against a real server (CSV format, traversal guard, restore)
 node tests/test-dict.mjs        # 8/8  dictionary shards, lookup, lemmatisation, file:// fallback
-node tests/test-shelf.mjs       # 30/30 reading-state inference, group CRUD, reading time, throttling, card rendering
+node tests/test-shelf.mjs       # 46/46 reading state, groups + icons, reading time, throttling, group frames, difficulty
+node tests/test-web.mjs         # 18/18 web completeness (assets + MIME, key scripts, proxy/archive live, page structure)
 ```
 
 See [HANDOVER.md](./HANDOVER.md) for architecture, module responsibilities, data model and handover notes.

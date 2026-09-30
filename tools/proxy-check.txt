@@ -1,0 +1,10 @@
+﻿PASS 鎺㈤拡 /__proxy?ping=1 | {"inkproxy":1}
+PASS 闈欐€?/index.html | 200 text/html
+PASS 闈欐€?/js/translate.js | 200 text/javascript
+PASS 闈欐€?/css/app.css | 200 text/css
+PASS 闈欐€?/dict/a.json | 200 application/json
+SKIP 鏈夐亾缁忚浆鍙戯紙鏈彁渚?YD_ID/YD_SECRET 鐜鍙橀噺锛?PASS MyMemory 缁忚浆鍙?| 浣犲ソ
+PASS 鐧藉悕鍗曟嫤鎴?| status=403
+PASS 鐩綍绌胯秺闃叉姢 | status=404
+FAILS=0/9
+

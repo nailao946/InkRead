@@ -259,7 +259,8 @@ namespace InkRead
             "bodyLen:(document.body?document.body.innerHTML.length:0)," +
             "scripts:document.scripts.length," +
             "shelfCards:document.querySelectorAll('#shelfList .book-card').length," +
-            "groups:document.querySelectorAll('#shelfGroups .group-chip').length," +
+            "frames:document.querySelectorAll('.group-frame').length," +
+            "newGroupBtn:document.querySelectorAll('#shelfGroups .group-new').length," +
             "store:!!(window.IR&&IR.filestore&&IR.filestore.ready)," +
             "jsErr:e?e.textContent:'',promiseErr:p?p.textContent:''});})()";
 

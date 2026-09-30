@@ -1,0 +1,6 @@
+﻿reader.js=OK
+util.js=OK
+storage.js=OK
+filestore.js=OK
+settings.js=OK
+vocab.js=OK

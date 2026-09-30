@@ -75,19 +75,11 @@
         <!-- 自绘标题栏 -->
         <Border Grid.Row="0" Background="#2C2C2A" BorderBrush="#3A3A37" BorderThickness="0,0,0,1">
             <Grid>
+                <!-- 只显示运行状态（logo/名称在页面内已有，避免重复） -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                    <Border Width="21" Height="21" CornerRadius="6" Background="#FAC775" Margin="0,0,10,0">
-                        <TextBlock Text="墨" Foreground="#2C2C2A" FontSize="11.5" FontWeight="SemiBold"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <TextBlock Text="墨读" Foreground="#F2EFE7" FontSize="13.5" FontWeight="SemiBold"
-                               VerticalAlignment="Center" />
-                    <TextBlock Text="InkRead" Foreground="#8A8781" FontSize="11.5" Margin="7,1,0,0"
-                               VerticalAlignment="Center" />
-                    <Border Background="#333330" CornerRadius="99" Padding="9,2.5" Margin="16,0,0,0"
-                            VerticalAlignment="Center">
-                        <TextBlock x:Name="statusText" Text="正在启动…" Foreground="#9C988F" FontSize="11" />
-                    </Border>
+                    <Ellipse Width="7" Height="7" Fill="#7A776F" Margin="0,0,9,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="statusText" Text="正在启动…" Foreground="#9C988F" FontSize="11.5"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"

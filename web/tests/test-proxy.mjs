@@ -2,7 +2,7 @@
 import crypto from 'crypto';
 
 const PORT = process.env.PORT || 8644;
-const BASE = 'http://127.0.0.1:' + PORT;
+const BASE = process.env.BASE || ('http://127.0.0.1:' + PORT);
 
 const results = [];
 const check = (name, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + name + (extra ? ' | ' + extra : ''));
@@ -23,8 +23,10 @@ for (const [p, expect] of [['/index.html', 'text/html'], ['/js/translate.js', 't
   } catch (e) { check('静态 ' + p, false, e.message); }
 }
 
-/* 3. 有道（签名 POST 走转发） */
-try {
+/* 3. 有道（签名 POST 走转发）—— 无凭证时跳过（不记为失败） */
+if (!process.env.YD_ID || !process.env.YD_SECRET) {
+  results.push('SKIP 有道经转发（未提供 YD_ID/YD_SECRET 环境变量）');
+} else try {
   const q = 'hello';
   const salt = Date.now();
   const curtime = Math.floor(Date.now() / 1000);

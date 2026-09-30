@@ -38,18 +38,25 @@ IR.reader = {
   },
   saveGroups() { IR.settings.save(); },
   groupName(id) { const g = this.groups().find(x => x.id === id); return g ? g.name : ''; },
-  newGroup(name) {
+  groupIcon(id) { const g = this.groups().find(x => x.id === id); return g ? (g.icon || '') : ''; },
+  /* 可选分组图标（含"无图标"） */
+  GROUP_ICONS: ['', '📁', '📚', '🌟', '🧙', '🚀', '🕵️', '🏰', '🌍', '🧠', '🎯', '❤️', '🔍', '🐉', '🌙'],
+  newGroup(name, icon) {
     const g = {
       id: 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-      name: (name || '').trim() || '未命名分组', createdAt: Date.now()
+      name: (name || '').trim() || '未命名分组',
+      icon: icon || '', createdAt: Date.now()
     };
     this.groups().push(g);
     this.saveGroups();
     return g;
   },
-  renameGroup(id, name) {
+  updateGroup(id, name, icon) {
     const g = this.groups().find(x => x.id === id);
-    if (g) { g.name = (name || '').trim() || g.name; this.saveGroups(); }
+    if (!g) return;
+    if (name != null && name.trim()) g.name = name.trim();
+    if (icon != null) g.icon = icon;
+    this.saveGroups();
   },
   removeGroup(id) {
     const i = this.groups().findIndex(x => x.id === id);
@@ -60,6 +67,51 @@ IR.reader = {
       books.filter(b => b.grpId === id).forEach(b => { b.grpId = ''; IR.bookStore.put(b); });
       if (this.shelfFilter === id) this.shelfFilter = 'all';
       this.initShelf();
+    });
+  },
+  /* 新建 / 编辑分组弹窗（可选图标、可删除；opts.assignTo 表示建好后把某本书移入） */
+  openGroupDialog(mode, groupId, opts) {
+    const R = this;
+    opts = opts || {};
+    const g = mode === 'edit' ? this.groups().find(x => x.id === groupId) : null;
+    if (mode === 'edit' && !g) return;
+    let picked = g ? (g.icon || '') : (opts.icon || '');
+    const iconHtml = R.GROUP_ICONS.map(ic =>
+      `<button class="icon-opt${(ic || '') === picked ? ' active' : ''}" data-ic="${IR.esc(ic)}">${ic || '无'}</button>`).join('');
+    IR.modal.open(`
+      <h3 style="margin-top:0">${mode === 'edit' ? '编辑分组' : '新建分组'}</h3>
+      <div class="bd-row"><span>名称</span><input class="input" data-gname value="${g ? IR.esc(g.name) : ''}" placeholder="例如：奇幻小说 / 待读清单" style="flex:1"></div>
+      <div class="bd-row" style="align-items:flex-start"><span>图标</span><div class="icon-grid" data-icons>${iconHtml}</div></div>
+      <div class="modal-foot">
+        <button class="btn btn-primary" data-gsave>保存</button>
+        ${mode === 'edit' ? '<button class="btn btn-sm btn-danger" data-gdel>删除分组</button>' : ''}
+        <button class="btn btn-ghost" data-gcancel>取消</button>
+      </div>`, box => {
+      IR.$$('[data-ic]', box).forEach(btn => btn.addEventListener('click', () => {
+        picked = btn.dataset.ic;
+        IR.$$('[data-ic]', box).forEach(b => b.classList.toggle('active', b === btn));
+      }));
+      IR.$('[data-gcancel]', box).addEventListener('click', () => IR.modal.close());
+      IR.$('[data-gsave]', box).addEventListener('click', async () => {
+        const name = IR.$('[data-gname]', box).value.trim();
+        if (!name) return IR.toast('请填写分组名称', 'err');
+        if (mode === 'edit') {
+          R.updateGroup(g.id, name, picked);
+          IR.toast('分组已更新', 'ok');
+        } else {
+          const ng = R.newGroup(name, picked);
+          if (opts.assignTo) await R.assignGroup(opts.assignTo, ng.id);
+          IR.toast('分组「' + ng.name + '」已创建', 'ok');
+        }
+        IR.modal.close();
+        R.initShelf();
+      });
+      const del = IR.$('[data-gdel]', box);
+      if (del) del.addEventListener('click', () => {
+        if (!confirm('删除分组「' + g.name + '」？组内书籍会回到「未分组」。')) return;
+        R.removeGroup(g.id);
+        IR.modal.close();
+      });
     });
   },
   async assignGroup(bookId, groupId) {
@@ -137,8 +189,115 @@ IR.reader = {
     const d = new Date(ms), p = n => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   },
+  /* 兼容旧调用 */
+  renameGroup(id, name) { this.updateGroup(id, name, undefined); },
+
+  /* ---------- 词频统计 + 阶梯阅读法难度评估 ----------
+     口径与阅读着色一致：已标记「已学」= 已知，已标记「在学」= 半知，
+     词库里没有的 = 生词。覆盖率按【词次】算（教学法与 SSR/lexile 类指标都用词次覆盖）。 */
+  wordStatusOf(word) {
+    const map = IR.vocab.statusMap;
+    for (const c of IR.lemmas(word)) {
+      const st = map && map.get(c);
+      if (st) return { key: c, status: st };
+    }
+    return { key: String(word).toLowerCase(), status: 'unknown' };
+  },
+  /* 阶梯阅读法档位（可理解输入阈值） */
+  levelOf(coverage) {
+    if (coverage >= 0.98) return { level: 1, text: '轻松', tier: '自由阅读区', desc: '可理解度 ≥98%：几乎不用查词，适合泛读、提速与保持语感。' };
+    if (coverage >= 0.95) return { level: 2, text: '适中', tier: 'i+1 理想区', desc: '可理解度 95–98%：阶梯阅读法的黄金区间，少量生词正好用来扩展词汇。' };
+    if (coverage >= 0.90) return { level: 3, text: '偏难', tier: '教学挑战区', desc: '可理解度 90–95%：需要边读边查，建议先攻高频生词再读，或每天只读一小节。' };
+    return { level: 4, text: '困难', tier: '挫败区', desc: '可理解度 <90%：远超当前词汇量，建议先读更简单的书，或先把高频生词加入生词本。' };
+  },
+  async computeBookStats(book) {
+    const text = book.text || (book.blocks || []).filter(b => b.t !== 'img').map(b => b.text || '').join(' ');
+    const tokens = text.match(/[A-Za-z][A-Za-z'’\-]*/g) || [];
+    const uniq = new Map();
+    let ut = 0, lt = 0, kt = 0;
+    for (const t of tokens) {
+      const { key, status } = this.wordStatusOf(t);
+      let e = uniq.get(key);
+      if (!e) { e = { display: t, count: 0, status }; uniq.set(key, e); }
+      e.count++;
+      if (status === 'known') kt++;
+      else if (status === 'learning') lt++;
+      else ut++;
+    }
+    let uu = 0, lu = 0, ku = 0;
+    uniq.forEach(e => { if (e.status === 'known') ku++; else if (e.status === 'learning') lu++; else uu++; });
+    const total = tokens.length || 1;
+    const coverage = (kt + lt) / total;
+    const lv = this.levelOf(coverage);
+    const top = Array.from(uniq.values()).filter(e => e.status === 'unknown')
+      .sort((a, b) => b.count - a.count).slice(0, 12)
+      .map(e => ({ w: e.display, c: e.count }));
+    return {
+      tokens: tokens.length, unique: uniq.size,
+      unknown: uu, learning: lu, known: ku,
+      unknownTok: ut, learningTok: lt, knownTok: kt,
+      coverage: Math.round(coverage * 1000) / 1000,
+      level: lv.level, levelText: lv.text, tier: lv.tier, levelDesc: lv.desc,
+      topUnknown: top, at: Date.now()
+    };
+  },
+  async refreshBookStats(book) {
+    const stats = await this.computeBookStats(book);
+    book.stats = stats;
+    await IR.bookStore.put(book);
+    return stats;
+  },
 
   /* ---------- 书架 ---------- */
+  /* 书卡（variant：full＝分组视图网格，compact＝分组框内横排） */
+  _cardHtml(b, variant) {
+    const st = this.readStateOf(b);
+    const pct = Math.round((b.progress || 0) * 100);
+    const cover = b.cover
+      ? `<img class="book-cover-img" src="${b.cover}" alt="">`
+      : `<div class="book-cover-img book-cover-fallback">${IR.esc((b.title || '?').slice(0, 1))}</div>`;
+    const diff = (b.stats && b.stats.level)
+      ? `<span class="diff-badge d${b.stats.level}" title="难度：${IR.esc(b.stats.levelText)} · ${IR.esc(b.stats.tier || '')}">${IR.esc(b.stats.levelText)}</span>` : '';
+    return `
+      <div class="book-card ${variant}" data-id="${b.id}">
+        <div class="book-cover">
+          ${cover}
+          <span class="book-state ${st}" title="阅读状态：${this.readStateText[st]}">${this.readStateText[st]}</span>
+        </div>
+        <div class="book-body">
+          <div class="book-title" title="${IR.esc(b.title)}">${IR.esc(b.title)}</div>
+          <div class="book-author" title="${IR.esc(b.author || '未知作者')}">${b.author ? IR.esc(b.author) : '未知作者'}</div>
+          <div class="book-meta">
+            <span class="fmt-badge">${IR.esc(b.fmt || '')}</span>
+            <span>${(b.wordCount || 0).toLocaleString()} 词</span>
+            ${diff}
+          </div>
+          <div class="book-prog st-${st}"><i style="width:${pct}%"></i></div>
+          <div class="book-prog-text">
+            <span class="bp-pct">已读 <b>${pct}%</b></span>
+            <span class="book-detail-hint" data-detail>详情 ›</span>
+          </div>
+        </div>
+        ${variant === 'full' ? '<button class="book-more" data-detail title="详情 / 分组 / 删除">⋯</button>' : ''}
+      </div>`;
+  },
+  /* 分组框（微信读书式）：标题行 + 横排书卡 */
+  _groupFrameHtml(g, books) {
+    const title = g ? ((g.icon ? g.icon + ' ' : '') + IR.esc(g.name)) : '未分组';
+    return `
+      <section class="group-frame">
+        <div class="frame-head">
+          <span class="frame-title"${g ? ` data-goto="${g.id}"` : ''}>${title}</span>
+          <span class="frame-count">${books.length} 本</span>
+          ${g ? `<button class="frame-more" data-folder-menu="${g.id}" title="重命名 / 图标 / 删除">⋯</button>` : ''}
+          ${books.length > 4 ? `<button class="frame-all" data-goto="${g.id}">查看全部 ›</button>` : ''}
+        </div>
+        ${books.length
+          ? `<div class="frame-row">${books.map(b => this._cardHtml(b, 'compact')).join('')}</div>`
+          : '<div class="frame-empty">这个分组还没有书 —— 在书籍「详情」里移入</div>'}
+      </section>`;
+  },
+
   async initShelf() {
     const listEl = IR.$('#shelfList');
     const barEl = IR.$('#shelfGroups');
@@ -146,91 +305,108 @@ IR.reader = {
     books.sort((a, b) => b.addedAt - a.addedAt);
     IR.$('#shelfEmptyActions').hidden = books.length > 0;
 
-    /* 分组筛选条 */
-    const groups = this.groups();
-    const counts = {};
-    books.forEach(b => { const k = b.grpId || ''; counts[k] = (counts[k] || 0) + 1; });
-    const chip = (val, label) => `<button class="group-chip${this.shelfFilter === val ? ' active' : ''}" data-group="${IR.esc(val)}">${label}</button>`;
-    barEl.innerHTML = books.length ? (
-      chip('all', '全部 <b>' + books.length + '</b>') +
-      chip('__none__', '未分组 <b>' + (counts[''] || 0) + '</b>') +
-      groups.map(g => chip(g.id, '📁 ' + IR.esc(g.name) + ' <b>' + (counts[g.id] || 0) + '</b>')).join('') +
-      '<button class="group-chip group-new" data-group-new>＋ 新建分组</button>'
-    ) : '';
-
     if (!books.length) {
+      barEl.innerHTML = '';
+      listEl.className = 'shelf-list';
       listEl.innerHTML = `<div class="book-empty">书架空空如也<br><span style="font-size:.82rem">导入一本英文电子书开始阅读，或点下方按钮先看示例</span></div>`;
       return;
     }
 
-    const visible = books.filter(b => this.shelfFilter === 'all' ? true
-      : this.shelfFilter === '__none__' ? !b.grpId
-        : b.grpId === this.shelfFilter);
+    const groups = this.groups();
 
-    if (!visible.length) {
-      listEl.innerHTML = `<div class="book-empty">这个分组里还没有书<br><span style="font-size:.82rem">打开书籍「详情」可把书移入分组</span></div>`;
-      return;
+    if (this.shelfFilter === 'all') {
+      /* 全部视图：按「分组框」排布，每框一行（微信读书式） */
+      barEl.innerHTML = `<button class="group-new" data-group-new>＋ 新建分组</button>`;
+      const frames = groups.map(g => this._groupFrameHtml(g, books.filter(b => b.grpId === g.id)));
+      const un = books.filter(b => !b.grpId);
+      if (un.length || !groups.length) frames.push(this._groupFrameHtml(null, un));
+      listEl.className = 'shelf-frames';
+      listEl.innerHTML = frames.join('');
+    } else {
+      /* 分组视图：网格显示该组书籍 */
+      const g = groups.find(x => x.id === this.shelfFilter);
+      const inGroup = books.filter(b => b.grpId === this.shelfFilter);
+      barEl.innerHTML =
+        `<button class="group-chip" data-back>‹ 全部</button>` +
+        `<span class="group-current">${g && g.icon ? g.icon + ' ' : ''}${IR.esc(g ? g.name : '')}<b>${inGroup.length}</b></span>`;
+      listEl.className = 'shelf-list';
+      listEl.innerHTML = inGroup.length
+        ? inGroup.map(b => this._cardHtml(b, 'full')).join('')
+        : `<div class="book-empty">这个分组里还没有书<br><span style="font-size:.82rem">在书籍「详情」里把书移入本组</span></div>`;
     }
 
-    listEl.innerHTML = '';
-    for (const b of visible) {
-      const st = this.readStateOf(b);
-      const pct = Math.round((b.progress || 0) * 100);
-      const card = IR.el('div', { class: 'book-card', 'data-id': b.id });
-      const cover = b.cover
-        ? `<img class="book-cover-img" src="${b.cover}" alt="">`
-        : `<div class="book-cover-img book-cover-fallback">${IR.esc((b.title || '?').slice(0, 1))}</div>`;
-      card.innerHTML = `
-        <div class="book-cover">
-          ${cover}
-          <span class="book-state ${st}" title="阅读状态：${this.readStateText[st]}">${this.readStateText[st]}</span>
-        </div>
-        <div class="book-body">
-          <div class="book-title">${IR.esc(b.title)}</div>
-          <div class="book-author">${b.author ? IR.esc(b.author) : '未知作者'}${b.grpId ? ' · 📁 ' + IR.esc(this.groupName(b.grpId)) : ''}</div>
-          <div class="book-meta">
-            <span class="fmt-badge">${IR.esc(b.fmt)}</span>
-            <span>${(b.wordCount || 0).toLocaleString()} 词</span>
-            <span>${IR.fmtDate(b.addedAt)}</span>
-          </div>
-          <div class="book-prog" title="点击查看阅读详情"><i style="width:${pct}%"></i></div>
-          <div class="book-prog-text" title="点击查看阅读详情">
-            <span>已读 <b>${pct}%</b></span>
-            <span class="book-detail-hint">详情 ›</span>
-          </div>
-        </div>
-        <button class="book-more" title="详情 / 分组 / 删除">⋯</button>`;
-      card.addEventListener('click', e => {
-        if (e.target.closest('.book-more') || e.target.closest('.book-prog') || e.target.closest('.book-prog-text')) return;
-        this.openBook(b.id);
-      });
-      IR.$$('.book-prog, .book-prog-text, .book-more', card).forEach(el =>
-        el.addEventListener('click', ev => { ev.stopPropagation(); this.openBookDetail(b.id); }));
-      card.addEventListener('contextmenu', e => { e.preventDefault(); this.openBookDetail(b.id); });
-      listEl.appendChild(card);
-    }
-
-    /* 分组条交互 */
-    barEl.onclick = e => {
-      const g = e.target.closest('[data-group]');
-      if (g) { this.shelfFilter = g.dataset.group; this.initShelf(); return; }
-      if (e.target.closest('[data-group-new]')) {
-        const name = prompt('新分组名称：');
-        if (name && name.trim()) { this.newGroup(name); this.initShelf(); }
-      }
+    /* 交互（事件委托） */
+    listEl.onclick = e => {
+      const del = e.target.closest('[data-detail]');
+      if (del) { e.stopPropagation(); const c = del.closest('[data-id]'); if (c) this.openBookDetail(c.dataset.id); return; }
+      const go = e.target.closest('[data-goto]');
+      if (go) { this.shelfFilter = go.dataset.goto; this.initShelf(); return; }
+      const fm = e.target.closest('[data-folder-menu]');
+      if (fm) { e.stopPropagation(); this.openGroupDialog('edit', fm.dataset.folderMenu); return; }
+      const card = e.target.closest('.book-card');
+      if (card) this.openBook(card.dataset.id);
     };
-    IR.$$('[data-group]', barEl).forEach(ch => ch.addEventListener('contextmenu', e => {
-      const id = ch.dataset.group;
-      if (id === 'all' || id === '__none__') return;
+    listEl.oncontextmenu = e => {
+      const card = e.target.closest('.book-card');
+      if (!card) return;
       e.preventDefault();
-      const act = prompt(`分组「${this.groupName(id)}」：输入新名称重命名，留空则删除该分组`, this.groupName(id));
-      if (act === null) return;
-      if (!act.trim()) { if (confirm('删除该分组？组内书籍会回到「未分组」。')) this.removeGroup(id); }
-      else { this.renameGroup(id, act); this.initShelf(); }
-    }));
+      this.openBookDetail(card.dataset.id);
+    };
+    barEl.onclick = e => {
+      if (e.target.closest('[data-group-new]')) this.openGroupDialog('new');
+      else if (e.target.closest('[data-back]')) { this.shelfFilter = 'all'; this.initShelf(); }
+    };
   },
 
-  /* ---------- 书籍详情（进度 / 时长 / 状态 / 分组） ---------- */
+  /* ---------- 书籍详情（进度 / 时长 / 状态 / 分组 / 词频难度） ---------- */
+  _statsHtml(s) {
+    const pct = Math.round((s.coverage || 0) * 1000) / 10;
+    return `
+      <div class="bd-stat-grid">
+        <div class="bd-stat un"><b>${s.unknown.toLocaleString()}</b><span>生词</span></div>
+        <div class="bd-stat le"><b>${s.learning.toLocaleString()}</b><span>在学</span></div>
+        <div class="bd-stat kn"><b>${s.known.toLocaleString()}</b><span>已学</span></div>
+        <div class="bd-stat to"><b>${s.unique.toLocaleString()}</b><span>全书不同词</span></div>
+      </div>
+      <div class="bd-diff d${s.level}">
+        <b>难度：${IR.esc(s.levelText)}</b><span>${IR.esc(s.tier || '')}</span>
+      </div>
+      <div class="bd-cov">
+        <div class="bd-cov-bar"><i class="d${s.level}" style="width:${Math.min(100, pct)}%"></i></div>
+        <div class="bd-cov-text">可理解度 <b>${pct}%</b>（已学＋在学的词次占比）· 共 ${s.tokens.toLocaleString()} 词次</div>
+      </div>
+      <p class="bd-diff-desc">${IR.esc(s.levelDesc || '')}</p>
+      <div class="bd-cov-scale">阶梯阅读法：≥98% 自由阅读 · 95–98% i+1 理想 · 90–95% 教学挑战 · &lt;90% 挫败</div>
+      ${s.topUnknown && s.topUnknown.length ? `
+        <div class="bd-top">
+          <div class="bd-top-head">高频生词 Top ${s.topUnknown.length}（先攻这些，收益最大）
+            <button class="btn btn-sm" data-add-top>全部加入生词本</button>
+          </div>
+          <div class="bd-chips">${s.topUnknown.map(t => `<span class="bd-chip" title="出现 ${t.c} 次">${IR.esc(t.w)}<i>×${t.c}</i></span>`).join('')}</div>
+        </div>` : '<div class="bd-top bd-top-none">这本书没有生词 —— 全在你的词库里，可以放心读。</div>'}`;
+  },
+  _renderStats(box, book, force) {
+    const el = IR.$('[data-bd-stats]', box);
+    if (!el) return;
+    const paint = s => { el.innerHTML = s ? this._statsHtml(s) : '<div class="bd-stat-empty">正在统计全书词频…</div>'; };
+    if (book.stats && !force) {
+      paint(book.stats);
+      if (!book.stats.topUnknown || !book.stats.topUnknown.length) { /* 老数据：重算一次 */ this._renderStats(box, book, true); }
+      return;
+    }
+    paint(null);
+    setTimeout(async () => {
+      try {
+        const s = await this.refreshBookStats(book);
+        paint(s);
+        IR.toast(`难度统计完成：${s.levelText} · 可理解度 ${Math.round(s.coverage * 100)}%`, 'ok');
+        this.initShelf();     /* 让书架上的难度徽标同步 */
+      } catch (e) {
+        el.innerHTML = '<div class="bd-stat-empty">统计失败：' + IR.esc(e.message) + '</div>';
+      }
+    }, 30);
+  },
+
   async openBookDetail(id) {
     const b = await IR.bookStore.get(id);
     if (!b) return IR.toast('书本不存在', 'err');
@@ -238,7 +414,7 @@ IR.reader = {
     const st = this.readStateOf(b);
     const pct = Math.round((b.progress || 0) * 100);
     const grpOpts = ['<option value="">（未分组）</option>']
-      .concat(this.groups().map(g => `<option value="${g.id}"${b.grpId === g.id ? ' selected' : ''}>${IR.esc(g.name)}</option>`))
+      .concat(this.groups().map(g => `<option value="${g.id}"${b.grpId === g.id ? ' selected' : ''}>${g.icon ? g.icon + ' ' : ''}${IR.esc(g.name)}</option>`))
       .join('');
     IR.modal.open(`
       <div class="bd-head">
@@ -248,7 +424,7 @@ IR.reader = {
           <div class="bd-author">${b.author ? IR.esc(b.author) : '未知作者'} · ${IR.esc(b.fmt || '')} · ${(b.wordCount || 0).toLocaleString()} 词</div>
           <div class="bd-row"><span>阅读状态</span><b class="bd-state ${st}">${this.readStateText[st]}</b></div>
           <div class="bd-row"><span>阅读进度</span><b>${pct}%</b></div>
-          <div class="bd-bar"><i style="width:${pct}%"></i></div>
+          <div class="bd-bar st-${st}"><i style="width:${pct}%"></i></div>
         </div>
       </div>
       <div class="bd-grid">
@@ -261,6 +437,14 @@ IR.reader = {
         <select class="input" data-bd-group style="min-width:170px">${grpOpts}</select>
         <button class="btn btn-sm" data-bd-newgroup>新建分组</button>
       </div>
+
+      <div class="bd-section">
+        <div class="bd-section-head">词汇难度（按你当前的词汇量统计）
+          <button class="btn btn-sm btn-ghost" data-bd-restat title="重新扫描全书">重新统计</button>
+        </div>
+        <div data-bd-stats><div class="bd-stat-empty">正在统计全书词频…</div></div>
+      </div>
+
       <div class="modal-foot bd-foot">
         <button class="btn btn-primary" data-bd-open>继续阅读</button>
         <button class="btn btn-sm" data-bd-state="reading">标为在读</button>
@@ -275,13 +459,8 @@ IR.reader = {
         await R.assignGroup(b.id, e.target.value);
         IR.toast(e.target.value ? '已移入分组「' + R.groupName(e.target.value) + '」' : '已移出分组', 'ok');
       });
-      IR.$('[data-bd-newgroup]', box).addEventListener('click', async () => {
-        const name = prompt('新分组名称：');
-        if (!name || !name.trim()) return;
-        const g = R.newGroup(name);
-        await R.assignGroup(b.id, g.id);
-        IR.modal.close();
-      });
+      IR.$('[data-bd-newgroup]', box).addEventListener('click', () => R.openGroupDialog('new', null, { assignTo: b.id }));
+      IR.$('[data-bd-restat]', box).addEventListener('click', () => R._renderStats(box, b, true));
       IR.$$('[data-bd-state]', box).forEach(btn => btn.addEventListener('click', async () => {
         await R.setReadState(b.id, btn.dataset.bdState);
         IR.toast('已标记为「' + R.readStateText[btn.dataset.bdState] + '」', 'ok');
@@ -294,6 +473,16 @@ IR.reader = {
         IR.toast('已从书架删除', 'ok');
         R.initShelf();
       });
+      /* 高频生词一键加入生词本 */
+      box.addEventListener('click', async e => {
+        if (!e.target.closest('[data-add-top]')) return;
+        const top = (b.stats && b.stats.topUnknown) || [];
+        if (!top.length) return;
+        for (const t of top) await IR.vocab.mark(t.w.toLowerCase(), t.w, 'new');
+        IR.toast(`已把 ${top.length} 个高频生词加入生词本`, 'ok');
+        R._renderStats(box, b, true);
+      });
+      R._renderStats(box, b, false);
     });
   },
 
