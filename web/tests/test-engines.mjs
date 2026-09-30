@@ -82,7 +82,7 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
   check(name + ' 只要求填 API Key', /未配置/.test(msg) && msg.indexOf('API Key') >= 0 && msg.indexOf('AccessKey') < 0, msg);
 }
 
-/* 3b2. 火山方舟 Key 清洗 / 格式预检 / Key 类错误提示 */
+/* 3b2. 火山方舟 Key 清洗 / 格式预检 / Responses 接口路由 */
 {
   const of = T.apiFetch;
   let vm = '';
@@ -92,12 +92,41 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
   IR.settings.data.api.volcano = { apiKey: 'sk-not-ark-key', model: '' };
   vm = '';
   try { await T.volcano('hello'); } catch (e) { vm = e.message; }
-  check('火山方舟：非 UUID Key 提示格式', vm.indexOf('UUID') >= 0 && vm.indexOf('sk-') >= 0, vm);
+  check('火山方舟：非方舟 Key 提示格式', vm.indexOf('ark-') >= 0 && vm.indexOf('sk-') >= 0, vm);
   IR.settings.data.api.volcano = { apiKey: '123e4567-e89b-12d3-a456-426614174000', model: '' };
   T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ error: { message: 'The API key format is incorrect. Request id: x' } }) });
   vm = '';
   try { await T.volcano('hello'); } catch (e) { vm = e.message; }
-  check('火山方舟：Key 类错误给专属提示（不误导去改模型）', vm.indexOf('Key 无效') >= 0 && vm.indexOf('UUID') >= 0 && vm.indexOf('模型不存在') < 0, vm);
+  check('火山方舟：Key 类错误给专属提示（不误导去改模型）', vm.indexOf('Key 无效') >= 0 && vm.indexOf('ark-') >= 0 && vm.indexOf('模型不存在') < 0, vm);
+
+  /* ark- 前缀 Key（豆包新版形态）+ 翻译模型 → Responses 接口 */
+  let cap = null;
+  T.apiFetch = async (url, opts) => {
+    cap = { url, body: JSON.parse(opts.body) };
+    return { ok: true, status: 200, json: async () => ({ status: 'completed', output: [
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '敏捷的棕色狐狸' }] }
+    ] }) };
+  };
+  IR.settings.data.api.volcano = { apiKey: 'ark-123e4567-e89b-12d3-a456-426614174000-be732', model: '' };
+  const rv = await T.volcano('The quick brown fox.');
+  check('火山方舟：ark- Key + 翻译模型走 Responses 接口',
+    cap.url === 'https://ark.cn-beijing.volces.com/api/v3/responses' &&
+    cap.body.model === 'doubao-seed-translation-250915' &&
+    cap.body.input[0].content[0].translation_options.target_language === 'zh', cap.url + ' | ' + JSON.stringify(cap.body.model));
+  check('火山方舟：Responses 译文解析', rv.engine === '火山方舟' && rv.text === '敏捷的棕色狐狸', JSON.stringify(rv));
+
+  /* 显式填通用模型 → 仍走 chat/completions */
+  cap = null;
+  IR.settings.data.api.volcano = { apiKey: 'ark-123e4567-e89b-12d3-a456-426614174000-be732', model: 'ep-2024' };
+  await T.volcano('hi');
+  check('火山方舟：非翻译模型走 chat/completions', cap.url.indexOf('chat/completions') >= 0 && cap.body.model === 'ep-2024', cap.url);
+
+  /* 「模型不存在/无权访问」错误给开通指引 */
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ error: { code: 'InvalidEndpointOrModel.NotFound', message: 'The model or endpoint doubao-seed-1-6-250615 does not exist or you do not have access to it.' } }) });
+  vm = '';
+  try { await T.volcano('hello'); } catch (e) { vm = e.message; }
+  check('火山方舟：模型不存在给开通指引', vm.indexOf('未开通') >= 0, vm);
+
   T.apiFetch = of;
   IR.settings.data.api.volcano = { apiKey: '', model: '' };
 }

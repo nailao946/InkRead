@@ -133,25 +133,80 @@ IR.translate = {
     });
   },
 
-  /* ---------- 火山引擎 · 豆包大模型（只要 API Key，OpenAI 兼容端点） ----------
-     API Key：console.volcengine.com/ark → API Key（只需要这一个）
-     模型：填你在方舟已开通的模型名（如 doubao-…）或推理接入点 ID（ep-…），留空用默认。 */
+  /* ---------- 火山引擎 · 豆包大模型（只要 API Key） ----------
+     API Key：console.volcengine.com/ark → API Key（只需要这一个；形如 ark-<uuid>-xxxx 或纯 UUID）
+     模型：留空默认 doubao-seed-translation-250915（专用翻译模型，走 Responses 接口）；
+     也可填其他已开通的通用模型名（doubao-…，走 chat/completions）或推理接入点 ID（ep-…）。
+     实测：翻译模型不支持 chat/completions（报 does not support this api），
+     translation_options 必填且 source_language 不支持 auto → 锁定 en → zh。 */
   async volcano(q) {
     const c = IR.settings.data.api.volcano || {};
     const key = this._cleanKey(c.apiKey);
     if (!key) throw new Error('未配置火山方舟：设置 → 翻译接口 填 API Key');
-    /* 客户端格式预检：方舟 API Key 是带连字符的 UUID，错得离谱时直接给出可操作提示 */
+    /* 客户端格式预检：方舟 Key 为带连字符的 UUID，可带 ark- 前缀与短尾缀（官方两种形态都见过） */
     if (/^ep-/i.test(key)) throw new Error('火山方舟：你填的是「接入点 ID」（ep-…），那是填在「模型」一栏的，不能当 API Key。' +
-      '请到 console.volcengine.com/ark → API Key 管理，创建并复制 API Key（一串带连字符的 UUID）');
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key))
-      throw new Error('火山方舟：API Key 格式不对——方舟的 Key 是一串带连字符的 UUID（形如 xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx）。' +
+      '请到 console.volcengine.com/ark → API Key 管理，创建并复制 API Key（形如 ark-xxxxxxxx-xxxx-…）');
+    if (!/^(ark-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(-[0-9a-z]+)?$/i.test(key))
+      throw new Error('火山方舟：API Key 格式不对——方舟的 Key 形如 ark-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx（或一串带连字符的 UUID）。' +
         'sk- 开头的是阿里百炼的 Key，AKLT 开头的是访问密钥，都不能用在这里。' +
         '请到 console.volcengine.com/ark → API Key 管理重新复制');
+    const useModel = (c.model || '').trim() || 'doubao-seed-translation-250915';
+    /* 专用翻译模型只支持 Responses 接口；通用模型 / 接入点走 chat/completions */
+    if (/translation/i.test(useModel)) return this._arkResponsesTranslate(key, useModel, q);
     return this._chatTranslate({
       url: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-      apiKey: key, model: c.model, q, label: '火山方舟', defModel: 'doubao-seed-1-6-250615',
-      keyHint: '方舟 Key 是带连字符的 UUID，在 console.volcengine.com/ark → API Key 管理复制；ep-… 是接入点 ID（填「模型」栏），不能当 Key'
+      apiKey: key, model: useModel, q, label: '火山方舟', defModel: 'doubao-seed-translation-250915',
+      keyHint: '方舟 Key 形如 ark-<UUID>，在 console.volcengine.com/ark → API Key 管理复制；ep-… 是接入点 ID（填「模型」栏），不能当 Key'
     });
+  },
+
+  /* ---------- 方舟 Responses 接口（doubao-seed-translation 专用翻译模型） ----------
+     POST /api/v3/responses，translation_options 必填（source 不支持 auto，本应用固定 en → zh）。
+     输出取 output[] 里 type=message 项的 content[] 中 output_text。 */
+  async _arkResponsesTranslate(key, model, q) {
+    const body = JSON.stringify({
+      model,
+      input: [{
+        role: 'user',
+        content: [{ type: 'input_text', text: q, translation_options: { source_language: 'en', target_language: 'zh' } }]
+      }]
+    });
+    let j;
+    try {
+      const r = await this.apiFetch('https://ark.cn-beijing.volces.com/api/v3/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        body
+      });
+      j = await r.json();
+    } catch (e) {
+      throw new Error('火山方舟请求失败（网络不通、未启用本地转发，或 Key 无效）');
+    }
+    if (j.error) {
+      const m = j.error.message || j.error.code || JSON.stringify(j.error);
+      const code = String(j.error.code || '');
+      if (/format is incorrect|invalidapikey|authentication|invalid api key|incorrect api key/i.test(m + ' ' + code)) {
+        throw new Error('火山方舟：' + m + '（Key 无效或格式不对。方舟 Key 形如 ark-<UUID>，在 console.volcengine.com/ark → API Key 管理复制）');
+      }
+      if (/does not support this api|not support this api/i.test(m)) {
+        throw new Error('火山方舟：' + m + '（doubao-seed-translation 系列只能走 Responses 接口，请把「模型」留空或填翻译模型名；通用对话模型请填模型名如 doubao-seed-1-6-250615）');
+      }
+      if (/does not exist or you do not have access/i.test(m)) {
+        throw new Error('火山方舟：' + m + '（你未开通这个模型。到 console.volcengine.com/ark 开通「Doubao-翻译模型」，或把「模型」改成已开通的模型名 / 留空用默认翻译模型）');
+      }
+      throw new Error('火山方舟：' + m + '（若提示模型不存在/无权访问，请到方舟控制台开通对应模型后再试）');
+    }
+    let text = '';
+    const outs = Array.isArray(j.output) ? j.output : [];
+    for (const it of outs) {
+      if (it && Array.isArray(it.content)) {
+        for (const cc of it.content) {
+          if (cc && (cc.type === 'output_text' || typeof cc.text === 'string')) { text = cc.text; break; }
+        }
+      }
+      if (text) break;
+    }
+    return { engine: '火山方舟', text: String(text || '').trim() || '（无结果）' };
   },
 
   /* ---------- 本地转发（/__proxy） ----------
