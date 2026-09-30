@@ -579,6 +579,10 @@ body.toc-open .toc-panel { transform: translateX(0); }
   border: 1px solid var(--border); color: var(--text-3); white-space: nowrap;
 }
 .api-badge.ok { color: var(--success); border-color: var(--success); }
+.api-badge.bad { color: var(--danger); border-color: var(--danger); }
+.pw-box { display: flex; gap: .4rem; flex: 1; min-width: 0; align-items: stretch; }
+.pw-box .input { flex: 1; min-width: 0; }
+.pw-eye { flex: none; }
 .api-card-body { padding-top: .7rem; }
 .api-card-body .settings-row:first-child { margin-top: 0; }
 .api-hint { font-size: .72rem; color: var(--text-3); margin-left: auto; }

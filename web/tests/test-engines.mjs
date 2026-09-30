@@ -31,6 +31,7 @@ IR.settings = {
       aliyun: { apiKey: '', model: '' },
       alimt: { accessKeyId: '', accessKeySecret: '' },
       volcano: { apiKey: '', model: '' },
+      volmt: { accessKeyId: '', accessKeySecret: '' },
       deepl: { apiKey: '' },
       ms: { apiKey: '', region: '' },
       libre: { url: '', apiKey: '' },
@@ -60,12 +61,12 @@ for (const algo of ['SHA-256', 'SHA-1']) {
 check('_sha256Hex', (await T._sha256Hex('abc')) === crypto.createHash('sha256').update('abc').digest('hex'));
 
 /* 3. 官方/自建引擎已注册 + 未配置时报错可读 */
-const OFFICIAL = [['youdao', '有道'], ['tencent', '腾讯云'], ['aliyun', '阿里云百炼'], ['alimt', '阿里云机器翻译'], ['volcano', '火山方舟'],
+const OFFICIAL = [['youdao', '有道'], ['tencent', '腾讯云'], ['aliyun', '阿里云百炼'], ['alimt', '阿里云机器翻译'], ['volcano', '火山方舟'], ['volmt', '火山机器翻译'],
   ['deepl', 'DeepL'], ['ms', '微软翻译'], ['libre', 'LibreTranslate']];
 for (const [name, label] of OFFICIAL) {
   check('引擎已注册 ' + name, typeof T[name] === 'function');
 }
-for (const [name, label] of OFFICIAL.slice(1).filter(x => x[0] !== 'libre' && x[0] !== 'alimt')) {   /* libretranslate 可零配置用官方实例；alimt 是双字段，单独测 */
+for (const [name, label] of OFFICIAL.slice(1).filter(x => x[0] !== 'libre' && x[0] !== 'alimt' && x[0] !== 'volmt')) {   /* libre 可零配置；alimt/volmt 是双字段，单独测 */
   let msg = '';
   try { await T[name]('hello'); } catch (e) { msg = e.message; }
   check('未配置提示 ' + name, msg.indexOf(label) >= 0 && msg.indexOf('未配置') === 0, msg);
@@ -183,6 +184,58 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
 
   T.apiFetch = of;
   IR.settings.data.api.alimt = { accessKeyId: '', accessKeySecret: '' };
+}
+
+/* 3b4. 火山机器翻译（TranslateText，V4 签名，HMAC-SHA256） */
+{
+  const of = T.apiFetch;
+  let vm = '';
+  try { await T.volmt('hello'); } catch (e) { vm = e.message; }
+  check('volmt 未配置提示', vm.indexOf('火山机器翻译') >= 0 && vm.indexOf('未配置') === 0 && vm.indexOf('AccessKey') >= 0, vm);
+
+  let cap = null;
+  T.apiFetch = async (url, opts) => {
+    cap = { url, headers: opts.headers, body: opts.body };
+    return { ok: true, status: 200, json: async () => ({ TranslationList: [{ Translation: '你好世界', DetectedSourceLanguage: 'en' }], ResponseMetadata: { Action: 'TranslateText' } }) };
+  };
+  IR.settings.data.api.volmt = { accessKeyId: 'AKTEST', accessKeySecret: 'skTest' };
+  const rv = await T.volmt('Hello world');
+  check('volmt 请求结构（POST + Action=TranslateText + auto→zh + TextList）',
+    cap.url === 'https://translate.volcengineapi.com/?Action=TranslateText&Version=2020-06-01' &&
+    /"TargetLanguage":"zh"/.test(cap.body) && /"TextList":\["Hello world"\]/.test(cap.body), cap.url + ' | ' + cap.body);
+  check('volmt 译文解析', rv.engine === '火山机器翻译' && rv.text === '你好世界', JSON.stringify(rv));
+  /* V4 签名交叉验证：用 Node crypto 按官方文档规则独立重算 */
+  const xDate = cap.headers['X-Date'];
+  const H = (k, m) => crypto.createHmac('sha256', k).update(m).digest();
+  const hexB = b => Buffer.from(b).toString('hex');
+  const kDate = H('skTest', xDate.slice(0, 8));
+  const kRegion = H(hexB(kDate), 'cn-north-1');
+  const kService = H(hexB(kRegion), 'translate');
+  const kSigning = H(hexB(kService), 'request');
+  const canonical = ['POST', '/', 'Action=TranslateText&Version=2020-06-01',
+    'host:translate.volcengineapi.com\nx-date:' + xDate + '\n', 'host;x-date',
+    crypto.createHash('sha256').update(cap.body).digest('hex')].join('\n');
+  const sts = ['HMAC-SHA256', xDate, xDate.slice(0, 8) + '/cn-north-1/translate/request',
+    crypto.createHash('sha256').update(canonical).digest('hex')].join('\n');
+  const expectSig = crypto.createHmac('sha256', hexB(kSigning)).update(sts).digest('hex');
+  const sig = ((cap.headers['Authorization'] || '').match(/Signature=([0-9a-f]+)/) || [])[1];
+  check('volmt V4 签名与 Node crypto 一致', sig === expectSig, sig + ' vs ' + expectSig);
+  check('volmt Authorization 头格式', /^HMAC-SHA256 Credential=AKTEST\/\d{8}\/cn-north-1\/translate\/request, SignedHeaders=host;x-date, Signature=[0-9a-f]+$/.test(cap.headers['Authorization']), cap.headers['Authorization'].slice(0, 60));
+
+  /* 错误映射：ResponseMetadata.Error */
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ ResponseMetadata: { Error: { Code: '415', Message: 'unsupported language pair' } } }) });
+  let ev = '';
+  try { await T.volmt('hello'); } catch (err) { ev = err.message; }
+  check('volmt 错误带提示', ev.indexOf('415') >= 0 && ev.indexOf('语向') >= 0, ev);
+
+  /* auto 链：只配 volmt 时走 volmt */
+  IR.settings.data.api.volcano = { apiKey: '', model: '' };
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ TranslationList: [{ Translation: '汽车' }], ResponseMetadata: {} }) });
+  const rv2 = await T.run('car', 'auto');
+  check('auto 只配 volmt 时走 volmt', rv2.engine === '火山机器翻译', JSON.stringify(rv2));
+
+  T.apiFetch = of;
+  IR.settings.data.api.volmt = { accessKeyId: '', accessKeySecret: '' };
 }
 
 /* 3c. DeepL 按 Key 后缀自动选端点（:fx → api-free 优先） */

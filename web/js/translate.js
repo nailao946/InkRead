@@ -263,6 +263,62 @@ IR.translate = {
     return { engine: '火山方舟', text: String(text || '').trim() || '（无结果）' };
   },
 
+  /* ---------- 火山引擎 · 机器翻译（TranslateText，经典机翻，非大模型） ----------
+     凭证：AccessKey / SecretKey 对（console.volcengine.com → 右上角头像 → 访问密钥；
+     建议用 IAM 子账号只授权机器翻译）。需先在控制台开通机器翻译服务。
+     签名：火山 V4（HMAC-SHA256，与腾讯 TC3 同思路）：
+     kDate=HMAC(Secret, date) → kRegion=HMAC(hex(kDate), region) → kService=HMAC(hex(kRegion), 'translate')
+     → kSigning=HMAC(hex(kService), 'request')；Authorization: HMAC-SHA256 Credential=AK/scope,…
+     源语言不填 = 自动检测；TextList 单次总长 ≤5000 字符。 */
+  async volmt(q) {
+    const c = IR.settings.data.api.volmt || {};
+    const ak = this._cleanKey(c.accessKeyId), sk = this._cleanKey(c.accessKeySecret);
+    if (!ak || !sk) throw new Error('未配置火山机器翻译：设置 → 翻译接口 填 AccessKey / SecretKey');
+    const host = 'translate.volcengineapi.com', region = 'cn-north-1', service = 'translate';
+    const qs = 'Action=TranslateText&Version=2020-06-01';
+    const body = JSON.stringify({ TargetLanguage: 'zh', TextList: [q] });   /* SourceLanguage 留空 = 自动检测 */
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const xDate = d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + 'T' +
+      pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + 'Z';
+    const date = xDate.slice(0, 8);
+    const canonicalHeaders = 'host:' + host + '\n' + 'x-date:' + xDate + '\n';
+    const signedHeaders = 'host;x-date';
+    const canonicalRequest = ['POST', '/', qs, canonicalHeaders, signedHeaders, await this._sha256Hex(body)].join('\n');
+    const scope = date + '/' + region + '/' + service + '/request';
+    const stringToSign = ['HMAC-SHA256', xDate, scope, await this._sha256Hex(canonicalRequest)].join('\n');
+    /* 密钥派生：每层 HMAC 的 key 是上一层的 hex 字符串 */
+    const kDate = await this._hmac('SHA-256', sk, date);
+    const kRegion = await this._hmac('SHA-256', this._hex(kDate), region);
+    const kService = await this._hmac('SHA-256', this._hex(kRegion), service);
+    const kSigning = await this._hmac('SHA-256', this._hex(kService), 'request');
+    const signature = this._hex(await this._hmac('SHA-256', this._hex(kSigning), stringToSign));
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Date': xDate,
+      'Authorization': 'HMAC-SHA256 Credential=' + ak + '/' + scope + ', SignedHeaders=' + signedHeaders + ', Signature=' + signature
+    };
+    let j;
+    try {
+      const r = await this.apiFetch('https://' + host + '/?' + qs, { method: 'POST', headers, body });
+      j = await r.json();
+    } catch (e) {
+      throw new Error('火山机器翻译请求失败（网络不通或未启用本地转发）');
+    }
+    const meta = j.ResponseMetadata || {};
+    if (meta.Error) {
+      const code = String(meta.Error.Code || ''), m = meta.Error.Message || code;
+      const hint = /415|not.*language|unsupported/i.test(code + ' ' + m) ? '（该语向不支持，检查源文本语言）'
+        : /429/.test(code) ? '（请求过于频繁，请稍后再试）'
+        : /signature|sign/i.test(code + ' ' + m) ? '（签名失败：请核对 AccessKey / SecretKey 是否正确）'
+        : /open|auth|permission|account/i.test(code + ' ' + m) ? '（可能是服务未开通或账号无权限：到火山引擎控制台开通机器翻译）'
+        : '';
+      throw new Error('火山机器翻译 ' + code + '：' + m + hint);
+    }
+    const t = j.TranslationList && j.TranslationList[0] && j.TranslationList[0].Translation;
+    return { engine: '火山机器翻译', text: String(t || '（无结果）').trim() };
+  },
+
   /* ---------- 本地转发（/__proxy） ----------
      浏览器直连翻译官方接口会被 CORS 拦截。桌面版内置了转发服务；
      网页版可通过随附的本地服务（tools/serve.py / start-server.bat）打开，
@@ -498,7 +554,7 @@ IR.translate = {
   async run(q, engine) {
     const e = engine || IR.settings.data.api.engine || 'auto';
     if (this._engines.indexOf(e) >= 0) return this[e](q);
-    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 阿里机器翻译 → 火山方舟 → DeepL → 微软 → LibreTranslate），
+    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 阿里机器翻译 → 火山方舟 → 火山机器翻译 → DeepL → 微软 → LibreTranslate），
        最后兜底免费 MyMemory */
     const api = IR.settings.data.api;
     const chain = [];
@@ -512,6 +568,8 @@ IR.translate = {
     if (am.accessKeyId && am.accessKeySecret) chain.push('alimt');
     const v = api.volcano || {};
     if (v.apiKey) chain.push('volcano');
+    const vmt = api.volmt || {};
+    if (vmt.accessKeyId && vmt.accessKeySecret) chain.push('volmt');
     const dp = api.deepl || {};
     if (dp.apiKey) chain.push('deepl');
     const ms = api.ms || {};

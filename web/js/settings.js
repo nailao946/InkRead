@@ -15,6 +15,7 @@ IR.settingsPage = {
       aliyun: c => !!c.apiKey,
       alimt: c => !!(c.accessKeyId && c.accessKeySecret),
       volcano: c => !!c.apiKey,
+      volmt: c => !!(c.accessKeyId && c.accessKeySecret),
       deepl: c => !!c.apiKey,
       ms: c => !!c.apiKey,
       libre: c => !!(c.url || c.apiKey),
@@ -22,27 +23,49 @@ IR.settingsPage = {
       proxy: c => !!(c.on && c.url)
     };
 
-    /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?]；link = [文案, 网址] */
+    /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?]；link = [文案, 网址]
+       徽标三态：未配置（灰）/ 已配置+测试通过（绿 ✓）/ 已配置+测试未通过（红 ✗）/ 已配置未测试（灰）
+       展开规则：已配置自动展开；但用户手动收起过（_collapsed）就不再自动展开 */
     const card = (name, title, fields, hint, link) => {
-      const ok = filled[name](s.api[name] || {});
+      const cfg = s.api[name] || {};
+      const ok = filled[name](cfg);
+      const tested = cfg._testOk;                 /* undefined=未测试 true=通过 false=未通过 */
+      const openAttr = (ok && !cfg._collapsed) ? ' open' : '';
+      const badgeHtml = !ok
+        ? `<span class="api-badge" data-badge="${name}">未配置</span>`
+        : tested === true
+          ? `<span class="api-badge ok" data-badge="${name}">已配置 ✓</span>`
+          : tested === false
+            ? `<span class="api-badge bad" data-badge="${name}">已配置 ✗</span>`
+            : `<span class="api-badge" data-badge="${name}">已配置</span>`;
+      const statusText = !ok ? '未配置'
+        : tested === true ? '已配置 · 上次测试通过 ✓'
+        : tested === false ? '已配置 · 上次测试未通过 ✗'
+        : '已配置 · 未测试';
+      const field = f => {
+        const attrs = `data-api-in="${name}.${f[1]}" value="${IR.esc((s.api[name] && s.api[name][f[1]]) || '')}" placeholder="${IR.esc(f[2] || '')}"`;
+        /* 密码框：加「显示/隐藏」切换按钮 */
+        return f[3]
+          ? `<div class="settings-row"><label>${f[0]}</label><div class="pw-box">` +
+            `<input class="input" type="password" ${attrs}>` +
+            `<button type="button" class="btn btn-sm pw-eye" data-pw-eye tabindex="-1" title="显示或隐藏密文">显示</button></div></div>`
+          : `<div class="settings-row"><label>${f[0]}</label><input class="input" ${attrs}></div>`;
+      };
       return `
-        <details class="api-card" data-card="${name}"${ok ? ' open' : ''}>
+        <details class="api-card" data-card="${name}"${openAttr}>
           <summary>
             <h4>${title}</h4>
-            <span class="api-badge${ok ? ' ok' : ''}" data-badge="${name}">${ok ? '已配置' : '未配置'}</span>
+            ${badgeHtml}
           </summary>
           <div class="api-card-body">
             ${link ? `<a class="api-get" href="${link[1]}" target="_blank" rel="noopener">去获取 ${link[0]} ↗</a>` : ''}
-            ${(fields || []).map(f =>
-              `<div class="settings-row"><label>${f[0]}</label>` +
-              `<input class="input"${f[3] ? ' type="password"' : ''} data-api-in="${name}.${f[1]}" ` +
-              `value="${IR.esc((s.api[name] && s.api[name][f[1]]) || '')}" placeholder="${IR.esc(f[2] || '')}"></div>`).join('')}
+            ${(fields || []).map(field).join('')}
             <div class="api-card-foot">
               <button class="btn btn-sm btn-primary" data-api-save="${name}">保存</button>
               <button class="btn btn-sm" data-api-test="${name}">测试</button>
               ${hint ? `<span class="api-hint">${hint}</span>` : ''}
             </div>
-            <div class="api-status" data-api-status="${name}">${ok ? '已配置 · 未测试' : '未配置'}</div>
+            <div class="api-status" data-api-status="${name}">${statusText}</div>
           </div>
         </details>`;
     };
@@ -84,6 +107,7 @@ IR.settingsPage = {
                 <option value="aliyun" ${s.api.engine === 'aliyun' ? 'selected' : ''}>阿里云百炼</option>
                 <option value="alimt" ${s.api.engine === 'alimt' ? 'selected' : ''}>阿里云机器翻译</option>
                 <option value="volcano" ${s.api.engine === 'volcano' ? 'selected' : ''}>火山方舟 · 豆包</option>
+                <option value="volmt" ${s.api.engine === 'volmt' ? 'selected' : ''}>火山机器翻译</option>
                 <option value="deepl" ${s.api.engine === 'deepl' ? 'selected' : ''}>DeepL</option>
                 <option value="ms" ${s.api.engine === 'ms' ? 'selected' : ''}>微软翻译（Azure）</option>
               </optgroup>
@@ -131,6 +155,10 @@ IR.settingsPage = {
               ['API Key', 'apiKey', '形如 ark-xxxx…；console.volcengine.com/ark → API Key 管理', true],
               ['模型', 'model', '留空用 doubao-seed-translation；也可填 ep-… 等其他已开通模型']
             ], '只要一个 API Key（默认走豆包翻译模型，英文 → 中文）', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
+            ${card('volmt', '火山机器翻译（AccessKey）', [
+              ['AccessKey', 'accessKeyId', '控制台右上角头像 → 访问密钥；建议 IAM 子账号', true],
+              ['SecretKey', 'accessKeySecret', '与 AccessKey 成对使用', true]
+            ], '需先在控制台开通机器翻译服务（非大模型，经典机翻）', ['火山控制台', 'https://console.volcengine.com/'])}
             ${card('deepl', 'DeepL（API Free / Pro）', [
               ['API Key', 'apiKey', '免费版 Key 以 :fx 结尾；自动选 api-free / api', true]
             ], '只要一个 API Key', ['DeepL 账户 → API 密钥', 'https://www.deepl.com/your-account/keys'])}
@@ -197,6 +225,8 @@ IR.settingsPage = {
             <p><b>有道智云</b>：<a href="https://ai.youdao.com/" target="_blank" rel="noopener">ai.youdao.com</a> → 应用总览 → 查看应用，取「应用ID + API Keys + 应用密钥」，三行都填上最稳（签名用应用ID，鉴权失败会自动换 API Keys 重试）。</p>
             <p><b>腾讯云</b>：<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener">访问管理 → API 密钥</a> 取 SecretId / SecretKey；地域默认 ap-guangzhou。腾讯云没有纯 API Key 方案，只能用密钥对。</p>
             <p><b>阿里云百炼</b>：<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener">百炼控制台 → API-KEY</a>，<b>只要一个 API Key</b>（形如 sk-…），不需要 AccessKey；模型留空用 qwen-plus。</p>
+            <p><b>阿里云机器翻译</b>：<a href="https://mt.console.aliyun.com/" target="_blank" rel="noopener">机器翻译控制台</a> 先开通通用版服务，再用 AccessKeyId / AccessKeySecret 对（经典机翻，非大模型）。</p>
+            <p><b>火山机器翻译</b>：<a href="https://console.volcengine.com/" target="_blank" rel="noopener">火山引擎控制台</a> 开通机器翻译服务，AccessKey / SecretKey 取自「访问密钥」（经典机翻，非大模型）。</p>
             <p><b>火山方舟（豆包大模型）</b>：<a href="https://console.volcengine.com/ark" target="_blank" rel="noopener">方舟控制台 → API Key</a>，<b>只要一个 API Key</b>；模型填你已开通的模型名或接入点 ID（ep-…），留空用内置默认。</p>
             <p><b>DeepL</b>：<a href="https://www.deepl.com/your-account/keys" target="_blank" rel="noopener">DeepL 账户 → API 密钥</a>，<b>只要一个 API Key</b>；免费版 Key 以 <code>:fx</code> 结尾，程序会自动选 api-free / api 端点。</p>
             <p><b>微软翻译（Azure）</b>：<a href="https://portal.azure.com/" target="_blank" rel="noopener">Azure 门户</a> 创建「翻译服务」资源 → 密钥和终结点 → KEY 1；<b>多服务/区域资源必须填区域</b>（如 eastasia），全局资源可留空。</p>
@@ -319,8 +349,11 @@ IR.settingsPage = {
     const setBadge = (name, ok) => {
       const el = IR.$(`[data-badge="${name}"]`, mountEl);
       if (!el) return;
-      el.className = 'api-badge' + (ok ? ' ok' : '');
-      el.textContent = ok ? '已配置' : '未配置';
+      const tested = s.api[name] ? s.api[name]._testOk : undefined;
+      if (!ok) { el.className = 'api-badge'; el.textContent = '未配置'; return; }
+      if (tested === true) { el.className = 'api-badge ok'; el.textContent = '已配置 ✓'; }
+      else if (tested === false) { el.className = 'api-badge bad'; el.textContent = '已配置 ✗'; }
+      else { el.className = 'api-badge'; el.textContent = '已配置'; }
     };
     const collect = name => {
       const c = IR.$(`[data-card="${name}"]`, mountEl);
@@ -333,10 +366,12 @@ IR.settingsPage = {
       const name = btn.dataset.apiSave;
       if (!s.api[name]) s.api[name] = {};
       Object.assign(s.api[name], collect(name));
+      /* 配置改了，上次的测试结果不再可信 */
+      if ('_testOk' in s.api[name]) delete s.api[name]._testOk;
       IR.settings.save();
       const ok = filled[name](s.api[name]);
       setBadge(name, ok);
-      setStatus(name, ok ? 'ok' : '', ok ? '已保存 ✓' : '已保存（必填项不完整）');
+      setStatus(name, ok ? 'ok' : '', ok ? '已保存 ✓（可点「测试」验证连通）' : '已保存（必填项不完整）');
       IR.toast(title(name) + ' 配置已保存', 'ok');
     }));
 
@@ -344,15 +379,37 @@ IR.settingsPage = {
       const name = btn.dataset.apiTest;
       const cfg = s.api[name];
       if (cfg && typeof cfg === 'object') Object.assign(cfg, collect(name));   /* 免费引擎无配置字段 */
+      if ('_testOk' in (cfg || {})) delete cfg._testOk;                        /* 重测前先清旧结果 */
       IR.settings.save();
       if (filled[name] && cfg) setBadge(name, filled[name](cfg));
       setStatus(name, '', '测试中…');
       try {
         const r = await IR.translate[name]('hello');
+        if (cfg && typeof cfg === 'object') { cfg._testOk = true; IR.settings.save(); }
+        setBadge(name, true);
         setStatus(name, 'ok', '连接成功 ✓ hello → ' + r.text);
       } catch (err) {
+        if (cfg && typeof cfg === 'object') { cfg._testOk = false; IR.settings.save(); }
+        setBadge(name, cfg && filled[name] ? filled[name](cfg) : false);
         setStatus(name, 'err', '失败：' + err.message);
       }
+    }));
+
+    /* 密码框「显示/隐藏」切换 */
+    IR.$$('[data-pw-eye]', mountEl).forEach(btn => btn.addEventListener('click', () => {
+      const inp = btn.parentElement && btn.parentElement.querySelector('input');
+      if (!inp) return;
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      btn.textContent = show ? '隐藏' : '显示';
+    }));
+
+    /* 手动收起过的卡片不再自动展开（每次切换都记住状态） */
+    IR.$$('.api-card[data-card]', mountEl).forEach(d => d.addEventListener('toggle', () => {
+      const name = d.dataset.card;
+      if (!name || !s.api[name]) return;          /* 免费引擎卡（free）不追踪 */
+      s.api[name]._collapsed = !d.open;
+      IR.settings.save();
     }));
 
     /* 本地转发状态：桌面版自带；网页版需用 start-server.bat / tools/serve.py 启动 */

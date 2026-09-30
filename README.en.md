@@ -65,15 +65,16 @@ READ/
 - **Read-aloud**: sentence-level queue with the current paragraph highlighted; optional auto-pronounce
   when tapping a word
 - **Translation** (works on both front-ends):
-  - 7 official APIs: **Youdao** (three fields + signature), **Tencent Cloud TMT** (SecretId/SecretKey),
+  - 8 official APIs: **Youdao** (three fields + signature), **Tencent Cloud TMT** (SecretId/SecretKey),
     **Alibaba Bailian** (**API Key only**, defaults to qwen-plus),
     **Alibaba Machine Translation** (AccessKeyId/AccessKeySecret, enable the service first),
     **Volcano Ark · Doubao** (**API Key only**, translation model via Responses API),
+    **Volcano Machine Translation** (AccessKey/SecretKey, enable the service first),
     **DeepL** (**API Key only**, Free/Pro auto-detected), **Microsoft Translator (Azure)** (**Key + optional region**)
   - 1 open-source/self-hosted option: **LibreTranslate** (enter any instance URL; allow custom hosts via
     `<archive dir>/proxy-allow.txt`)
   - 3 free built-ins (no key needed): MyMemory (reachable from mainland China), Google, Bing
-  - Auto mode tries configured official APIs in order (Youdao → Tencent → Bailian → AliMT → Ark → DeepL → MS → Libre),
+  - Auto mode tries configured official APIs in order (Youdao → Tencent → Bailian → AliMT → Ark → VolMT → DeepL → MS → Libre),
     then falls back to MyMemory
   - Collapsible provider cards, each with a **clickable “Get a key ↗” link**; expanding one card never
     stretches its neighbours

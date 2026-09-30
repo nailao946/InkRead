@@ -32,6 +32,7 @@ namespace InkRead
         {
             "openapi.youdao.com",
             "mt.aliyuncs.com",
+            "translate.volcengineapi.com",
             "edge.microsoft.com",
             "api.cognitive.microsofttranslator.com",
             "translate.googleapis.com",

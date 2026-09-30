@@ -65,6 +65,7 @@ IR.settings = {
     aliyun: { apiKey: '', model: '' },
     alimt: { accessKeyId: '', accessKeySecret: '' },
     volcano: { apiKey: '', model: '' },
+    volmt: { accessKeyId: '', accessKeySecret: '' },
     deepl: { apiKey: '' },
     ms: { apiKey: '', region: '' },
     libre: { url: '', apiKey: '' },
