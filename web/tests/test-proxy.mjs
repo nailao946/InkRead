@@ -83,5 +83,23 @@ try {
 } catch (e) { check('自定义白名单', false, e.message); }
 rmSync(tmpRoot, { recursive: true, force: true });
 
+/* 8. 界面内嵌网页（剑桥词典小窗）：白名单放行 + 根相对链接被改写成上游绝对地址
+   （不改写的话页面样式/脚本会指向本地服务而 404；上游不可达时记为 SKIP） */
+const CAMB = 'https://dictionary.cambridge.org/dictionary/english/undaunted';
+try {
+  const r = await fetch(BASE + '/__proxy?url=' + encodeURIComponent(CAMB));
+  if (r.status !== 200) {
+    results.push('SKIP 剑桥小窗经转发（上游不可达 status=' + r.status + '）');
+  } else {
+    const html = await r.text();
+    const ct = r.headers.get('content-type') || '';
+    check('剑桥小窗：转发返回 HTML', /text\/html/.test(ct) && /undaunted/i.test(html), ct);
+    check('剑桥小窗：无 X-Frame-Options（可被 iframe 内嵌）', !r.headers.get('x-frame-options'));
+    const relLeft = (html.match(/(?:href|src)="\/(?!\/)/g) || []).length;
+    const rewritten = (html.match(/="https:\/\/dictionary\.cambridge\.org\//g) || []).length;
+    check('剑桥小窗：根相对链接已改写成绝对地址', rewritten > 0 && relLeft === 0, '改写 ' + rewritten + ' 条 / 残留 ' + relLeft + ' 条');
+  }
+} catch (e) { check('剑桥小窗经转发', false, e.message); }
+
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);

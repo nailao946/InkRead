@@ -31,6 +31,7 @@ IR.settings = {
       aliyun: { apiKey: '', model: '' },
       alimt: { accessKeyId: '', accessKeySecret: '', edition: 'general', scene: 'social' },
       volcano: { apiKey: '', model: '' },
+      volmt3: { apiKey: '', resourceId: 'volc.speech.mt' },
       volmt: { accessKeyId: '', accessKeySecret: '' },
       deepl: { apiKey: '' },
       ms: { apiKey: '', region: '' },
@@ -252,6 +253,64 @@ for (const [name, label] of [['aliyun', '阿里云百炼'], ['volcano', '火山�
   T.apiFetch = of;
   IR.settings.data.api.volmt = { accessKeyId: '', accessKeySecret: '' };
 }
+
+/* 3b5. 火山机器翻译 v3（openspeech，API Key 鉴权；官方给出的 v3 接口） */
+{
+  const of = T.apiFetch;
+  let vm = '';
+  try { await T.volmt3('hello'); } catch (e) { vm = e.message; }
+  check('volmt3 未配置提示', vm.indexOf('未配置') === 0 && vm.indexOf('API Key') >= 0, vm);
+
+  let cap = null;
+  T.apiFetch = async (url, opts) => {
+    cap = { url, headers: opts.headers, body: opts.body };
+    return { ok: true, status: 200, json: async () => ({ code: 20000000, data: { translation_list: [{ translation: '你好世界' }] }, message: 'ok' }) };
+  };
+  IR.settings.data.api.volmt3 = { apiKey: '2a5b4996-860f-4d22-9fa5-7aa0a7a9839d', resourceId: '' };
+  const r3 = await T.volmt3('Hello world');
+  check('volmt3 请求结构（POST + matx_translate + auto→zh + text_list）',
+    cap.url === 'https://openspeech.bytedance.com/api/v3/machine_translation/matx_translate' &&
+    /"source_language":"auto"/.test(cap.body) &&
+    /"target_language":"zh"/.test(cap.body) &&
+    /"text_list":\["Hello world"\]/.test(cap.body), cap.url + ' | ' + cap.body);
+  check('volmt3 鉴权头（x-api-key / X-Api-Resource-Id / X-Api-Request-Id）',
+    cap.headers['x-api-key'] === '2a5b4996-860f-4d22-9fa5-7aa0a7a9839d' &&
+    cap.headers['X-Api-Resource-Id'] === 'volc.speech.mt' &&
+    /^[0-9a-f]{32}$/.test(cap.headers['X-Api-Request-Id']), JSON.stringify(cap.headers));
+  check('volmt3 译文解析（translation_list[0].translation）', r3.engine === '火山机器翻译v3' && r3.text === '你好世界', JSON.stringify(r3));
+
+  const firstId = cap.headers['X-Api-Request-Id'];
+  await T.volmt3('Hello again');
+  check('volmt3 请求 ID 每次唯一', cap.headers['X-Api-Request-Id'] !== firstId, firstId + ' vs ' + cap.headers['X-Api-Request-Id']);
+
+  IR.settings.data.api.volmt3 = { apiKey: 'k', resourceId: 'volc.speech.mt.custom' };
+  await T.volmt3('x');
+  check('volmt3 自定义资源 ID 生效', cap.headers['X-Api-Resource-Id'] === 'volc.speech.mt.custom');
+
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ code: 20000000, data: { translation_list: ['纯字符串译文'] }, message: 'ok' }) });
+  check('volmt3 译文项为字符串也兼容', (await T.volmt3('x')).text === '纯字符串译文');
+
+  T.apiFetch = async () => ({ ok: true, status: 500, json: async () => ({ code: 55000000, message: 'Invalid X-Api-Key' }) });
+  let e3 = '';
+  try { await T.volmt3('hello'); } catch (err) { e3 = err.message; }
+  check('volmt3 错误带 Key 指引', e3.indexOf('55000000') >= 0 && e3.indexOf('API Key 无效') >= 0, e3);
+
+  /* auto 链：只配 volmt3 时走 volmt3 */
+  IR.settings.data.api.volcano = { apiKey: '', model: '' };
+  IR.settings.data.api.volmt = { accessKeyId: '', accessKeySecret: '' };
+  IR.settings.data.api.volmt3 = { apiKey: 'k', resourceId: '' };
+  T.apiFetch = async () => ({ ok: true, status: 200, json: async () => ({ code: 20000000, data: { translation_list: [{ translation: '汽车' }] }, message: 'ok' }) });
+  const r3b = await T.run('car', 'auto');
+  check('auto 只配 volmt3 时走 volmt3', r3b.engine === '火山机器翻译v3', JSON.stringify(r3b));
+
+  T.apiFetch = of;
+  IR.settings.data.api.volmt3 = { apiKey: '', resourceId: 'volc.speech.mt' };
+}
+
+/* 3b6. 自动模式默认顺序：包含 volmt3，且腾讯垫底 */
+check('AUTO_ENGINES 含 volmt3 且腾讯垫底',
+  T.AUTO_ENGINES.indexOf('volmt3') >= 0 && T.AUTO_ENGINES[T.AUTO_ENGINES.length - 1] === 'tencent',
+  T.AUTO_ENGINES.join(','));
 
 /* 3c. DeepL 按 Key 后缀自动选端点（:fx → api-free 优先） */
 let deeplUrls = [];

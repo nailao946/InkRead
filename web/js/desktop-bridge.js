@@ -11,6 +11,8 @@
     'openapi.youdao.com',
     'mt.aliyuncs.com',
     'translate.volcengineapi.com',
+    'openspeech.bytedance.com',
+    'dictionary.cambridge.org',
     'tmt.tencentcloudapi.com',
     'dashscope.aliyuncs.com',
     'ark.cn-beijing.volces.com',

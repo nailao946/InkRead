@@ -65,6 +65,7 @@ IR.settings = {
     aliyun: { apiKey: '', model: '' },
     alimt: { accessKeyId: '', accessKeySecret: '', edition: 'general', scene: 'social' },
     volcano: { apiKey: '', model: '' },
+    volmt3: { apiKey: '', resourceId: 'volc.speech.mt' },
     volmt: { accessKeyId: '', accessKeySecret: '' },
     deepl: { apiKey: '' },
     ms: { apiKey: '', region: '' },

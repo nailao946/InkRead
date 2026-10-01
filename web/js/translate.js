@@ -1,7 +1,8 @@
 /* 墨读 InkRead — 翻译接口
-   官方接口 4 家：
+   官方接口 6 家：
      有道智云（v3，SHA-256 签名）· 腾讯云 TMT（TC3-HMAC-SHA256）
-     阿里云百炼（只要 API Key，OpenAI 兼容端点）· 火山方舟 · 豆包大模型（只要 API Key，OpenAI 兼容端点）
+     阿里云百炼（只要 API Key，OpenAI 兼容端点）· 阿里云机器翻译（通用/专业版）
+     火山方舟 · 豆包大模型（只要 API Key）· 火山机器翻译（v3 / 经典，两种鉴权）
    免费内置 3 家：MyMemory（国内直连）· 谷歌 gtx · 必应 Edge token（均无需 Key）
    浏览器直连会被 CORS 拦截 —— 统一走 apiFetch()，由本地转发（桌面版内置 / 网页版 serve.py）代发。
    划词/点词句子翻译用；单词释义仍走内置词库（ECDICT） */
@@ -75,7 +76,7 @@ IR.translate = {
 
   /* ---------- Key 清洗：去掉误粘的 Bearer 前缀 / 引号 / 首尾空白 ---------- */
   /* auto 模式默认尝试顺序（腾讯垫底）；用户可在设置 → 翻译接口 → 自动模式顺序里自定义 */
-  AUTO_ENGINES: ['youdao', 'aliyun', 'alimt', 'volcano', 'volmt', 'deepl', 'ms', 'libre', 'tencent'],
+  AUTO_ENGINES: ['youdao', 'aliyun', 'alimt', 'volcano', 'volmt3', 'volmt', 'deepl', 'ms', 'libre', 'tencent'],
   _cleanKey(s) {
     return String(s || '').trim()
       .replace(/^bearer\s+/i, '')
@@ -328,6 +329,65 @@ IR.translate = {
     return { engine: '火山机器翻译', text: String(t || '（无结果）').trim() };
   },
 
+  /* ---------- 火山引擎 · 机器翻译 v3（openspeech，只要 API Key） ----------
+     官方调用（控制台：console.volcengine.com → 机器翻译 / 语音技术 → API Key）：
+       POST https://openspeech.bytedance.com/api/v3/machine_translation/matx_translate
+       x-api-key: <API Key> · X-Api-Resource-Id: volc.speech.mt · X-Api-Request-Id: <每次唯一>
+       { "source_language": "auto", "target_language": "zh", "text_list": ["…"] }
+     响应：{ "code": 20000000, "data": { "translation_list": [ { "translation": "…" } ] }, "message": "ok" }
+     实测：source_language 支持 auto（自动识别语种）；错误码 55000000 = Invalid X-Api-Key。
+     与上面的「经典版」（translate.volcengineapi.com + AccessKey 签名）是两个不同产品，互不影响。 */
+  async volmt3(q) {
+    const c = IR.settings.data.api.volmt3 || {};
+    const key = this._cleanKey(c.apiKey);
+    if (!key) throw new Error('未配置火山机器翻译（API Key）：设置 → 翻译接口 填 API Key');
+    const rid = (c.resourceId || '').trim() || 'volc.speech.mt';
+    const body = JSON.stringify({
+      source_language: 'auto', target_language: 'zh',
+      text_list: [String(q == null ? '' : q).slice(0, 2000)]
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'X-Api-Resource-Id': rid,
+      'X-Api-Request-Id': this._reqId()
+    };
+    let j;
+    try {
+      const r = await this.apiFetch('https://openspeech.bytedance.com/api/v3/machine_translation/matx_translate',
+        { method: 'POST', headers, body });
+      j = await r.json();
+    } catch (e) {
+      throw new Error('火山机器翻译请求失败（网络不通或未启用本地转发）');
+    }
+    const code = String((j && j.code) || '');
+    const msg = String((j && j.message) || '').trim();
+    if (code && code !== '20000000') {
+      const hint = /Invalid X-Api-Key|api-?key/i.test(msg) ? '（API Key 无效：到火山引擎控制台 → 机器翻译 → API Key 重新复制）'
+        : /resource/i.test(code + ' ' + msg) ? '（资源 ID 不对：默认应填 volc.speech.mt）'
+        : /quota|limit|exceed|balance/i.test(msg) ? '（额度不足或超出限制：到控制台查看用量）'
+        : /open|activat|service|unsynchron/i.test(code + ' ' + msg) ? '（服务未开通或账号未同步：到火山引擎控制台开通「机器翻译」后再试）'
+        : '';
+      throw new Error('火山机器翻译 ' + (code || '（无错误码）') + '：' + (msg || '未知错误') + hint);
+    }
+    const item = j && j.data && Array.isArray(j.data.translation_list) ? j.data.translation_list[0] : null;
+    const t = item && (typeof item === 'string' ? item : item.translation);
+    return { engine: '火山机器翻译v3', text: String(t || '（无结果）').trim() };
+  },
+
+  /* 请求 ID：官方要求每次唯一（32 位十六进制）；无 Web Crypto 时退化为时间戳 + 随机数 */
+  _reqId() {
+    try {
+      const b = new Uint8Array(16);
+      const c = (typeof crypto !== 'undefined' && crypto.getRandomValues) ? crypto : null;
+      if (c) {
+        c.getRandomValues(b);
+        return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+      }
+    } catch (e) { /* 退化路径 */ }
+    return (Date.now().toString(16) + Math.random().toString(16).slice(2) + '0'.repeat(32)).slice(0, 32);
+  },
+
   /* ---------- 本地转发（/__proxy） ----------
      浏览器直连翻译官方接口会被 CORS 拦截。桌面版内置了转发服务；
      网页版可通过随附的本地服务（tools/serve.py / start-server.bat）打开，
@@ -559,12 +619,12 @@ IR.translate = {
   },
 
   /* ---------- 统一入口 ---------- */
-  _engines: ['youdao', 'tencent', 'aliyun', 'volcano', 'deepl', 'ms', 'libre', 'google', 'bing', 'mymemory'],
+  _engines: ['youdao', 'tencent', 'aliyun', 'alimt', 'volcano', 'volmt3', 'volmt', 'deepl', 'ms', 'libre', 'google', 'bing', 'mymemory'],
   async run(q, engine) {
     const e = engine || IR.settings.data.api.engine || 'auto';
     if (this._engines.indexOf(e) >= 0) return this[e](q);
-    /* auto：已配置的官方接口依次尝试（有道 → 腾讯 → 阿里百炼 → 阿里机器翻译 → 火山方舟 → 火山机器翻译 → DeepL → 微软 → LibreTranslate），
-       最后兜底免费 MyMemory */
+    /* auto：已配置的官方接口依次尝试（有道 → 阿里百炼 → 阿里机器翻译 → 火山方舟 → 火山机器翻译 v3 → 火山机器翻译经典
+       → DeepL → 微软 → LibreTranslate），最后兜底免费 MyMemory */
     const api = IR.settings.data.api;
     /* 各引擎是否已配置（配置了才参与 auto） */
     const y = api.youdao || {};
@@ -572,6 +632,7 @@ IR.translate = {
     const al = api.aliyun || {};
     const am = api.alimt || {};
     const v = api.volcano || {};
+    const vmt3 = api.volmt3 || {};
     const vmt = api.volmt || {};
     const dp = api.deepl || {};
     const ms = api.ms || {};
@@ -582,6 +643,7 @@ IR.translate = {
       aliyun: !!al.apiKey,
       alimt: !!(am.accessKeyId && am.accessKeySecret),
       volcano: !!v.apiKey,
+      volmt3: !!vmt3.apiKey,
       volmt: !!(vmt.accessKeyId && vmt.accessKeySecret),
       deepl: !!dp.apiKey,
       ms: !!ms.apiKey,

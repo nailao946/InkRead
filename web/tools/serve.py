@@ -19,6 +19,7 @@
 
 import json
 import os
+import re
 import sys
 import threading
 import urllib.error
@@ -44,6 +45,8 @@ ALLOW_HOSTS = {
     'openapi.youdao.com',
     'mt.aliyuncs.com',
     'translate.volcengineapi.com',
+    'openspeech.bytedance.com',
+    'dictionary.cambridge.org',
     'edge.microsoft.com',
     'api.cognitive.microsofttranslator.com',
     'translate.googleapis.com',
@@ -117,7 +120,31 @@ CORS_HEADERS = {
 }
 
 # 转发时透传的请求头
-PASS_HEADERS = ('authorization', 'content-type', 'accept', 'accept-language')
+PASS_HEADERS = ('authorization', 'content-type', 'accept', 'accept-language', 'user-agent')
+
+# 默认 User-Agent：部分站点（如剑桥词典的 Cloudflare 防护）会直接拒绝 Python-urllib 的默认 UA
+DEFAULT_UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')
+
+# 需要重写根相对链接的站点（界面内嵌网页用，如剑桥词典小窗）：
+# 通过本地转发打开的外部页面，其 <link href="/..."> <script src="/..."> 会指向本地服务而 404，
+# 重写成上游绝对地址后即可正常加载样式与脚本。
+REWRITE_ROOT_REL_HOSTS = ('dictionary.cambridge.org',)
+
+
+def rewrite_root_relative(html, host):
+    """把 HTML 里的根相对链接（href="/x"、src="/x"、url(/x)）改写为上游绝对地址。"""
+    base = 'https://' + host
+
+    def sub_attr(m):
+        quote, path = m.group(2), m.group(3)
+        if path.startswith('//'):
+            return m.group(0)
+        return m.group(1) + '=' + quote + base + path + quote
+
+    out = re.sub(r'(?i)\b(href|src)\s*=\s*(["\'])(/[^"\']*)', sub_attr, html)
+    out = re.sub(r'(?i)url\(\s*(["\']?)/(?!/)', lambda m: 'url(' + (m.group(1) or '') + base + '/', out)
+    return out
 
 
 def default_store_root():
@@ -292,6 +319,9 @@ class Handler(SimpleHTTPRequestHandler):
             val = self.headers.get(name)
             if val:
                 req.add_header(name, val)
+        # 调用方没带 UA 时补一个浏览器 UA（否则 Cloudflare 等会按 UA 直接拒绝）
+        if not self.headers.get('User-Agent'):
+            req.add_header('User-Agent', DEFAULT_UA)
 
         proxy = (self.headers.get('x-ink-proxy') or '').strip() or system_proxy()
         handlers = []
@@ -315,6 +345,20 @@ class Handler(SimpleHTTPRequestHandler):
                 resp.close()
             except Exception:
                 pass
+
+        # 内嵌网页（如剑桥词典小窗）：把根相对资源改写成上游绝对地址，样式/脚本才不会 404
+        if 'text/html' in ctype.lower() and (t.hostname or '').lower() in REWRITE_ROOT_REL_HOSTS:
+            charset = 'utf-8'
+            m = re.search(r'charset=([\w-]+)', ctype)
+            if m:
+                charset = m.group(1)
+            text = data.decode(charset, 'replace')
+            text = rewrite_root_relative(text, t.hostname)
+            data = text.encode('utf-8')
+            if 'charset' in ctype.lower():
+                ctype = re.sub(r'(?i)charset=[\w-]+', 'charset=utf-8', ctype)
+            else:
+                ctype = ctype + '; charset=utf-8'
 
         self.send_response(status)
         self.send_header('Content-Type', ctype)

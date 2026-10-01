@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,6 +34,8 @@ namespace InkRead
             "openapi.youdao.com",
             "mt.aliyuncs.com",
             "translate.volcengineapi.com",
+            "openspeech.bytedance.com",
+            "dictionary.cambridge.org",
             "edge.microsoft.com",
             "api.cognitive.microsofttranslator.com",
             "translate.googleapis.com",
@@ -572,6 +575,9 @@ namespace InkRead
                 if (SkipHeader(k)) continue;
                 try { msg.Headers.TryAddWithoutValidation(k, kv.Value); } catch { }
             }
+            /* 调用方没带 UA 时补一个浏览器 UA：部分站点（如剑桥词典的 Cloudflare）会按 UA 直接拒绝 */
+            if (!msg.Headers.Contains("User-Agent"))
+                msg.Headers.TryAddWithoutValidation("User-Agent", DefaultUserAgent);
 
             req.Headers.TryGetValue("x-ink-proxy", out string proxyUrl);
             using (HttpResponseMessage resp = await Client(proxyUrl).SendAsync(msg, _cts.Token))
@@ -584,11 +590,38 @@ namespace InkRead
                     if (resp.StatusCode != HttpStatusCode.NoContent)
                         body = await resp.Content.ReadAsByteArrayAsync();
                 }
+                /* 内嵌网页（如剑桥词典小窗）：把根相对资源改写成上游绝对地址，样式/脚本才不会 404 */
+                if (body != null && body.Length > 0 && respCt != null &&
+                    respCt.IndexOf("text/html", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    Array.IndexOf(RewriteRootRelHosts, uri.Host.ToLowerInvariant()) >= 0)
+                {
+                    body = Encoding.UTF8.GetBytes(RewriteRootRelative(Encoding.UTF8.GetString(body), uri.Host));
+                    respCt = "text/html; charset=utf-8";
+                }
                 await WriteResponse(s, (int)resp.StatusCode, resp.ReasonPhrase ?? "OK",
                     string.IsNullOrEmpty(respCt) ? "application/json; charset=utf-8" : respCt,
                     body, CorsHeaders);
             }
         }
+
+        /* 需要重写根相对链接的站点（界面内嵌网页用，如剑桥词典小窗）：
+           这类页面的 <link href="/…"> <script src="/…"> 在本地转发下会指向 127.0.0.1 而 404，
+           改成上游绝对地址后样式与脚本才能正常加载。 */
+        private static readonly string[] RewriteRootRelHosts = { "dictionary.cambridge.org" };
+
+        private static string RewriteRootRelative(string html, string host)
+        {
+            string b = "https://" + host;
+            html = Regex.Replace(html, "(?i)\\b(href|src)\\s*=\\s*([\"'])(/[^\"']*)",
+                m => m.Groups[3].Value.StartsWith("//", StringComparison.Ordinal) ? m.Value
+                     : m.Groups[1].Value + "=" + m.Groups[2].Value + b + m.Groups[3].Value + m.Groups[2].Value);
+            html = Regex.Replace(html, "(?i)url\\(\\s*([\"']?)/(?!/)", m => "url(" + m.Groups[1].Value + b + "/");
+            return html;
+        }
+
+        /* 默认 User-Agent：转发缺省时使用（浏览器 UA，避免被站点按 UA 拒绝） */
+        private const string DefaultUserAgent =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
         private static bool SkipHeader(string name)
         {
@@ -599,7 +632,6 @@ namespace InkRead
                    name.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase) ||
                    name.Equals("Origin", StringComparison.OrdinalIgnoreCase) ||
                    name.Equals("Referer", StringComparison.OrdinalIgnoreCase) ||
-                   name.Equals("User-Agent", StringComparison.OrdinalIgnoreCase) ||
                    name.Equals("Accept", StringComparison.OrdinalIgnoreCase) ||
                    name.Equals("Accept-Language", StringComparison.OrdinalIgnoreCase) ||
                    name.StartsWith("Sec-", StringComparison.OrdinalIgnoreCase) ||

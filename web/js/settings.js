@@ -15,6 +15,7 @@ IR.settingsPage = {
       aliyun: c => !!c.apiKey,
       alimt: c => !!(c.accessKeyId && c.accessKeySecret),
       volcano: c => !!c.apiKey,
+      volmt3: c => !!c.apiKey,
       volmt: c => !!(c.accessKeyId && c.accessKeySecret),
       deepl: c => !!c.apiKey,
       ms: c => !!c.apiKey,
@@ -22,6 +23,8 @@ IR.settingsPage = {
       mymemory: () => true, google: () => true, bing: () => true,
       proxy: c => !!(c.on && c.url)
     };
+    /* 已配置数量（分组标题上显示） */
+    const cnt = names => names.filter(n => filled[n] && filled[n](s.api[n] || {})).length;
 
     /* 生成一张可折叠接口卡片：fields = [标签, 字段名, 占位符?, 是否密码?]；link = [文案, 网址]；extra = 额外 HTML（如下拉）
        徽标三态：未配置（灰）/ 已配置+测试通过（绿 ✓）/ 已配置+测试未通过（红 ✗）/ 已配置未测试（灰）
@@ -58,15 +61,17 @@ IR.settingsPage = {
             ${badgeHtml}
           </summary>
           <div class="api-card-body">
-            ${link ? `<a class="api-get" href="${link[1]}" target="_blank" rel="noopener">去获取 ${link[0]} ↗</a>` : ''}
+            <div class="api-lead">
+              <span class="api-desc">${hint || ''}</span>
+              ${link ? `<a class="api-get" href="${link[1]}" target="_blank" rel="noopener">${link[0]} ↗</a>` : ''}
+            </div>
             ${(fields || []).map(field).join('')}
             ${extra || ''}
             <div class="api-card-foot">
               <button class="btn btn-sm btn-primary" data-api-save="${name}">保存</button>
               <button class="btn btn-sm" data-api-test="${name}">测试</button>
-              ${hint ? `<span class="api-hint">${hint}</span>` : ''}
+              <span class="api-status" data-api-status="${name}">${statusText}</span>
             </div>
-            <div class="api-status" data-api-status="${name}">${statusText}</div>
           </div>
         </details>`;
     };
@@ -98,7 +103,7 @@ IR.settingsPage = {
         <h3>翻译接口</h3>
 
         <div class="api-toolbar">
-          <div class="settings-row">
+          <div class="api-tool-row">
             <label>默认引擎</label>
             <select class="input" data-engine style="width:250px">
               <option value="auto" ${!s.api.engine || s.api.engine === 'auto' ? 'selected' : ''}>自动（已配置的优先 → 免费兜底）</option>
@@ -108,7 +113,8 @@ IR.settingsPage = {
                 <option value="aliyun" ${s.api.engine === 'aliyun' ? 'selected' : ''}>阿里云百炼</option>
                 <option value="alimt" ${s.api.engine === 'alimt' ? 'selected' : ''}>阿里云机器翻译</option>
                 <option value="volcano" ${s.api.engine === 'volcano' ? 'selected' : ''}>火山方舟 · 豆包</option>
-                <option value="volmt" ${s.api.engine === 'volmt' ? 'selected' : ''}>火山机器翻译</option>
+                <option value="volmt3" ${s.api.engine === 'volmt3' ? 'selected' : ''}>火山机器翻译（API Key）</option>
+                <option value="volmt" ${s.api.engine === 'volmt' ? 'selected' : ''}>火山机器翻译 · 经典（AccessKey）</option>
                 <option value="deepl" ${s.api.engine === 'deepl' ? 'selected' : ''}>DeepL</option>
                 <option value="ms" ${s.api.engine === 'ms' ? 'selected' : ''}>微软翻译（Azure）</option>
               </optgroup>
@@ -123,11 +129,12 @@ IR.settingsPage = {
             </select>
             <span class="settings-note" style="margin:0">划词 / 点词句子翻译用；单词释义优先走内置词典</span>
           </div>
-          <div class="settings-row">
+          <div class="api-tool-row">
             <label>点词自动翻译</label>
             <label class="switch"><input type="checkbox" data-auto-trans ${(s.reader && s.reader.autoTranslate === false) ? '' : 'checked'}><span class="switch-track"></span></label>
             <span class="settings-note" style="margin:0">点单词弹窗后自动出译文，无需再点「翻译」</span>
           </div>
+          <div class="api-status" data-localproxy>本地转发：检测中…</div>
           <details class="api-help" data-order-box>
             <summary>自动模式尝试顺序（点开调整；腾讯默认垫底）</summary>
             <div class="auto-order-list" data-order-list></div>
@@ -136,11 +143,10 @@ IR.settingsPage = {
               <span class="api-hint">只影响「自动」引擎：按此顺序试已配置的接口，都失败才用 MyMemory 兜底</span>
             </div>
           </details>
-          <div class="api-status" data-localproxy>本地转发：检测中…</div>
         </div>
 
         <div class="api-group">
-          <div class="api-group-title">国内云厂商 · 官方接口</div>
+          <div class="api-group-title">国内云厂商 · 官方接口<span class="api-group-count">已配置 ${cnt(['youdao', 'tencent', 'aliyun', 'alimt', 'volcano', 'volmt3', 'volmt', 'deepl', 'ms'])}/9</span></div>
           <div class="api-grid">
             ${card('youdao', '有道智云', [
               ['应用ID', 'key', '官网「应用ID」'],
@@ -151,12 +157,12 @@ IR.settingsPage = {
               ['SecretId', 'secretId', '访问管理 → API 密钥'],
               ['SecretKey', 'secretKey', '访问管理 → API 密钥', true],
               ['地域', 'region', '默认 ap-guangzhou']
-            ], '无 API Key 方案，只能用密钥', ['腾讯云 API 密钥', 'https://console.cloud.tencent.com/cam/capi'])}
+            ], '无 API Key 方案，只能用密钥对', ['腾讯云 API 密钥', 'https://console.cloud.tencent.com/cam/capi'])}
             ${card('aliyun', '阿里云百炼（API Key）', [
               ['API Key', 'apiKey', 'bailian.console.aliyun.com → API-KEY（sk-…）', true],
               ['模型', 'model', '留空用 qwen-plus；可填 qwen-turbo 等']
-            ], '只要一个 API Key', ['百炼 API-KEY 页面', 'https://bailian.console.aliyun.com/'])}
-            ${card('alimt', '阿里云机器翻译（AccessKey）', [
+            ], '只要一个 API Key（大模型翻译）', ['百炼 API-KEY 页面', 'https://bailian.console.aliyun.com/'])}
+            ${card('alimt', '阿里云机器翻译', [
               ['AccessKeyId', 'accessKeyId', 'LTAI 开头；RAM 子账号建议只授权机器翻译', true],
               ['AccessKeySecret', 'accessKeySecret', '与 AccessKeyId 成对使用', true]
             ], '通用版全领域；专业版垂类更准（需分别开通）', ['机器翻译控制台', 'https://mt.console.aliyun.com/'], `
@@ -178,11 +184,15 @@ IR.settingsPage = {
             ${card('volcano', '火山方舟 · 豆包（API Key）', [
               ['API Key', 'apiKey', '形如 ark-xxxx…；console.volcengine.com/ark → API Key 管理', true],
               ['模型', 'model', '留空用 doubao-seed-translation；也可填 ep-… 等其他已开通模型']
-            ], '只要一个 API Key（默认走豆包翻译模型，英文 → 中文）', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
-            ${card('volmt', '火山机器翻译（AccessKey）', [
+            ], '大模型翻译，只要一个 API Key', ['火山方舟 API Key', 'https://console.volcengine.com/ark'])}
+            ${card('volmt3', '火山机器翻译（API Key）', [
+              ['API Key', 'apiKey', '控制台 → 机器翻译 → API Key（UUID 形式）', true],
+              ['资源 ID', 'resourceId', '默认 volc.speech.mt，一般不用改']
+            ], '官方 v3 接口（openspeech），只要一个 API Key · 自动识别源语言', ['火山引擎控制台', 'https://console.volcengine.com/'])}
+            ${card('volmt', '火山机器翻译 · 经典（AccessKey）', [
               ['AccessKey', 'accessKeyId', '控制台右上角头像 → 访问密钥；建议 IAM 子账号', true],
               ['SecretKey', 'accessKeySecret', '与 AccessKey 成对使用', true]
-            ], '需先在控制台开通机器翻译服务（非大模型，经典机翻）', ['火山控制台', 'https://console.volcengine.com/'])}
+            ], '经典接口（非大模型），需先在控制台开通机器翻译服务', ['火山控制台', 'https://console.volcengine.com/'])}
             ${card('deepl', 'DeepL（API Free / Pro）', [
               ['API Key', 'apiKey', '免费版 Key 以 :fx 结尾；自动选 api-free / api', true]
             ], '只要一个 API Key', ['DeepL 账户 → API 密钥', 'https://www.deepl.com/your-account/keys'])}
@@ -250,8 +260,11 @@ IR.settingsPage = {
             <p><b>腾讯云</b>：<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" rel="noopener">访问管理 → API 密钥</a> 取 SecretId / SecretKey；地域默认 ap-guangzhou。腾讯云没有纯 API Key 方案，只能用密钥对。</p>
             <p><b>阿里云百炼</b>：<a href="https://bailian.console.aliyun.com/" target="_blank" rel="noopener">百炼控制台 → API-KEY</a>，<b>只要一个 API Key</b>（形如 sk-…），不需要 AccessKey；模型留空用 qwen-plus。</p>
             <p><b>阿里云机器翻译</b>：<a href="https://mt.console.aliyun.com/" target="_blank" rel="noopener">机器翻译控制台</a> 先开通通用版服务，再用 AccessKeyId / AccessKeySecret 对（经典机翻，非大模型）。</p>
-            <p><b>火山机器翻译</b>：<a href="https://console.volcengine.com/" target="_blank" rel="noopener">火山引擎控制台</a> 开通机器翻译服务，AccessKey / SecretKey 取自「访问密钥」（经典机翻，非大模型）。</p>
             <p><b>火山方舟（豆包大模型）</b>：<a href="https://console.volcengine.com/ark" target="_blank" rel="noopener">方舟控制台 → API Key</a>，<b>只要一个 API Key</b>；模型填你已开通的模型名或接入点 ID（ep-…），留空用内置默认。</p>
+            <p><b>火山机器翻译（API Key）</b>：<a href="https://console.volcengine.com/" target="_blank" rel="noopener">火山引擎控制台</a> → 机器翻译 → 复制 API Key（UUID 形式），<b>只要这一个</b>；
+            接口为官方 v3（openspeech），源语言自动识别，推荐优先使用。</p>
+            <p><b>火山机器翻译 · 经典（AccessKey）</b>：同一控制台开通机器翻译服务后，用 AccessKey / SecretKey 对走经典接口（非大模型）；
+            与上面的 API Key 版是<b>两个独立产品</b>，开通其一即可。</p>
             <p><b>DeepL</b>：<a href="https://www.deepl.com/your-account/keys" target="_blank" rel="noopener">DeepL 账户 → API 密钥</a>，<b>只要一个 API Key</b>；免费版 Key 以 <code>:fx</code> 结尾，程序会自动选 api-free / api 端点。</p>
             <p><b>微软翻译（Azure）</b>：<a href="https://portal.azure.com/" target="_blank" rel="noopener">Azure 门户</a> 创建「翻译服务」资源 → 密钥和终结点 → KEY 1；<b>多服务/区域资源必须填区域</b>（如 eastasia），全局资源可留空。</p>
             <p><b>LibreTranslate</b>：<a href="https://libretranslate.com/" target="_blank" rel="noopener">官方实例</a> 或你自建的实例（Docker 一条命令即可）；自建通常不需要 Key。
@@ -439,7 +452,8 @@ IR.settingsPage = {
     /* ---------- 自动模式尝试顺序（可自定义，腾讯默认垫底） ---------- */
     const AUTO_LABELS = {
       youdao: '有道智云', tencent: '腾讯云 TMT', aliyun: '阿里云百炼', alimt: '阿里云机器翻译',
-      volcano: '火山方舟 · 豆包', volmt: '火山机器翻译', deepl: 'DeepL', ms: '微软翻译', libre: 'LibreTranslate'
+      volcano: '火山方舟 · 豆包', volmt3: '火山机器翻译（API Key）', volmt: '火山机器翻译 · 经典',
+      deepl: 'DeepL', ms: '微软翻译', libre: 'LibreTranslate'
     };
     const AUTO_DEFAULT = (IR.translate.AUTO_ENGINES || []).slice();
     const getOrder = () => {

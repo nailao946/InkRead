@@ -56,10 +56,6 @@ window.addEventListener('unhandledrejection', e => {
       </div>
       <div id="shelfGroups" class="shelf-groups"></div>
       <div id="shelfCrumb" class="shelf-crumb" hidden></div>
-      <div class="dropzone" id="dropzone">
-        <p>支持 <b>EPUB / MOBI / TXT / PDF</b> —— 拖到页面任意位置即可导入，或点击上方按钮</p>
-        <p class="dropzone-sub">TXT 自动识别 UTF-8 / GBK 编码，不会乱码 · 受 DRM 保护或扫描图片版的电子书无法导入</p>
-      </div>
       <div id="shelfList" class="shelf-list"></div>
       <div class="shelf-empty-actions" id="shelfEmptyActions" hidden>
         <button id="btnDemo" class="btn btn-ghost">载入示例文章（快速体验）</button>
@@ -169,6 +165,24 @@ window.addEventListener('unhandledrejection', e => {
 
 <!-- 点词悬浮窗 -->
 <div id="wordPopup" class="word-popup" hidden></div>
+
+<!-- 剑桥词典小窗：界面内右侧抽屉（走本地转发加载，看完即关，不跳浏览器） -->
+<div id="dictMask" class="dict-mask" hidden></div>
+<aside id="dictPanel" class="dict-panel" hidden>
+  <div class="dict-head">
+    <span class="dict-title" id="dictTitle">剑桥词典</span>
+    <span class="dict-tools">
+      <button id="btnDictReload" class="btn btn-sm btn-ghost" title="重新加载">⟳</button>
+      <button id="btnDictOpen" class="btn btn-sm btn-ghost" title="在系统浏览器中打开">↗ 浏览器</button>
+      <button id="btnDictClose" class="btn btn-sm btn-ghost" title="关闭（Esc）">✕</button>
+    </span>
+  </div>
+  <!-- sandbox 不含 allow-same-origin / allow-top-navigation：被代理的第三方页面拿不到本应用的同源权限，也无法跳走整个界面 -->
+  <iframe id="dictFrame" class="dict-frame" src="about:blank" title="剑桥词典"
+          referrerpolicy="no-referrer"
+          sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>
+  <div class="dict-foot">释义来自剑桥词典 · 由本地转发加载（样式已自动修正）</div>
+</aside>
 
 <!-- 通用模态框 -->
 <div id="modalMask" class="modal-mask" hidden>

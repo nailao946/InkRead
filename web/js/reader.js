@@ -988,7 +988,7 @@ IR.reader = {
       const word = popup.dataset.w, key = popup.dataset.k, display = popup.dataset.d;
       const action = op.dataset.op;
       if (action === 'speak') return IR.tts.speak(word);
-      if (action === 'cam') return window.open('https://dictionary.cambridge.org/dictionary/english/' + encodeURIComponent(word.toLowerCase()), '_blank');
+      if (action === 'cam') return this.dict.open(word);
       if (action === 'close') return this._closePopup(popup);
       if (action === 'trans') {
         const box = IR.$('[data-trans]', popup);
@@ -1039,7 +1039,7 @@ IR.reader = {
         <button class="btn btn-sm st-known" data-op="known">标为已学</button>
         <button class="btn btn-sm st-new" data-op="new">＋ 生词本</button>
         <button class="btn btn-sm btn-ghost" data-op="trans">翻译</button>
-        <button class="btn btn-sm btn-ghost" data-op="cam">剑桥 ↗</button>
+        <button class="btn btn-sm btn-ghost" data-op="cam">剑桥词典</button>
       </div>`;
     popup.dataset.w = word;
     popup.dataset.k = key;
@@ -1132,6 +1132,49 @@ IR.reader = {
   },
 
   _closePopup(popup) { popup.hidden = true; },
+
+  /* ---------- 剑桥词典小窗（界面内右侧抽屉，不跳浏览器） ----------
+     直接 iframe 剑桥官网会被 X-Frame-Options 拒绝，因此统一走本地转发 /__proxy：
+     转发只回传上游内容与 CORS 头（不带 X-Frame-Options），并把页面内的根相对链接
+     改写成上游绝对地址（见 serve.py / LocalServer.cs），样式与脚本才能正常加载。
+     无本地转发（file:// 直开网页版）时退回系统浏览器打开。 */
+  dict: {
+    url: '',
+    async open(word) {
+      const w = String(word || '').trim().toLowerCase();
+      if (!w) return;
+      const direct = 'https://dictionary.cambridge.org/dictionary/english/' + encodeURIComponent(w);
+      this.url = direct;
+      const panel = IR.$('#dictPanel'), frame = IR.$('#dictFrame');
+      const proxied = IR.translate.localProxyAvailable ? await IR.translate.localProxyAvailable() : false;
+      if (!panel || !frame || !proxied) {
+        window.open(direct, '_blank');
+        if (!proxied) IR.toast('界面内小窗需要本地转发；已改用系统浏览器打开', 'err');
+        return;
+      }
+      const title = IR.$('#dictTitle', panel);
+      if (title) title.textContent = w + ' · 剑桥词典';
+      const src = '__proxy?url=' + encodeURIComponent(direct);
+      frame.dataset.src = src;
+      if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
+      IR.$('#dictMask').hidden = false;
+      panel.hidden = false;
+    },
+    close() {
+      const panel = IR.$('#dictPanel'), mask = IR.$('#dictMask'), frame = IR.$('#dictFrame');
+      if (panel) panel.hidden = true;
+      if (mask) mask.hidden = true;
+      /* 把 src 清空：停掉页面里的脚本 / 媒体，避免常驻后台 */
+      if (frame) { frame.removeAttribute('src'); frame.dataset.src = ''; frame.setAttribute('src', 'about:blank'); }
+    },
+    reload() {
+      const frame = IR.$('#dictFrame');
+      if (!frame || !frame.dataset.src) return;
+      const src = frame.dataset.src;
+      frame.setAttribute('src', 'about:blank');
+      setTimeout(() => { frame.setAttribute('src', src); }, 40);
+    }
+  },
 
   /* ---------- 全文朗读 ---------- */
   speech: {
@@ -1313,6 +1356,17 @@ IR.reader = {
     IR.$('#tocMask').addEventListener('click', () => this.closeToc());
     IR.$('#btnTocPin').addEventListener('click', () => this.pinToc());
     IR.$('#btnTocUnpin').addEventListener('click', () => this.unpinToc());
+    /* 剑桥词典小窗：关闭 / 刷新 / 转系统浏览器 / Esc */
+    const dictPanel = IR.$('#dictPanel');
+    if (dictPanel) {
+      IR.$('#btnDictClose', dictPanel).addEventListener('click', () => this.dict.close());
+      IR.$('#btnDictReload', dictPanel).addEventListener('click', () => this.dict.reload());
+      IR.$('#btnDictOpen', dictPanel).addEventListener('click', () => { if (this.dict.url) window.open(this.dict.url, '_blank'); });
+      IR.$('#dictMask').addEventListener('click', () => this.dict.close());
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !dictPanel.hidden) { e.stopPropagation(); this.dict.close(); }
+      });
+    }
     this.bindSelection();
     this.bindPageNav();
     this.bindFont();

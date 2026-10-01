@@ -14,7 +14,7 @@ const check = (n, c, extra) => results.push((c ? 'PASS' : 'FAIL') + ' ' + n + (e
 /* 1. index.html 引用的资源全部可达且 MIME 正确 */
 const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const refs = [...html.matchAll(/(?:src|href)="((?!https?:|#)[^"]+)"/g)].map(m => m[1])
-  .filter(u => !u.startsWith('data:'));
+  .filter(u => !u.startsWith('data:') && !u.startsWith('about:'));   /* about:blank 是词典小窗 iframe 的占位 src */
 check('index.html 引用资源数 ≥ 15', refs.length >= 15, refs.length + ' 个');
 
 let bad = [];
@@ -40,7 +40,7 @@ check('关键脚本/清单齐全', missing.length === 0, missing.join(','));
 /* 3. 桌面桥在纯浏览器下必须"不接管"（避免网页版走错通道） */
 const bridge = readFileSync(path.join(ROOT, 'js/desktop-bridge.js'), 'utf8');
 check('桌面桥有 chrome.webview 守卫', /if \(!window\.chrome \|\| !window\.chrome\.webview/.test(bridge));
-check('桌面桥覆盖官方接口域名', ['tmt.tencentcloudapi.com', 'dashscope.aliyuncs.com', 'ark.cn-beijing.volces.com', 'api.mymemory.translated.net']
+check('桌面桥覆盖官方接口域名', ['tmt.tencentcloudapi.com', 'dashscope.aliyuncs.com', 'ark.cn-beijing.volces.com', 'api.mymemory.translated.net', 'openspeech.bytedance.com']
   .every(h => bridge.indexOf(h) >= 0));
 
 /* 4. 本地服务能力：转发 + 存档 + 白名单 */
@@ -57,13 +57,19 @@ try {
   check('转发白名单生效（非翻译域名 403）', r.status === 403, 'status=' + r.status);
 } catch (e) { check('转发白名单生效（非翻译域名 403）', false, e.message); }
 
-/* 5. 页面关键结构（书架分组条 / 阅读视图 / 设置挂载点） */
+/* 5. 页面关键结构（书架分组条 / 阅读视图 / 设置挂载点 / 剑桥词典小窗） */
 for (const [name, re] of [
   ['书架分组条 #shelfGroups', /id="shelfGroups"/],
   ['书架列表 #shelfList', /id="shelfList"/],
   ['阅读视图 #readingView', /id="readingView"/],
-  ['设置挂载点 #settingsMount', /id="settingsMount"/]
+  ['设置挂载点 #settingsMount', /id="settingsMount"/],
+  ['剑桥词典小窗 #dictPanel', /id="dictPanel"/],
+  ['剑桥词典 iframe #dictFrame', /id="dictFrame"/]
 ]) check('页面结构：' + name, re.test(html));
+check('书架不再有导入格式提示条（dropzone 已删）', html.indexOf('id="dropzone"') < 0 && html.indexOf('class="dropzone"') < 0);
+check('词典小窗 iframe 带 sandbox（disable 同源与顶层跳转）',
+  /id="dictFrame"[\s\S]{0,200}sandbox="allow-scripts/.test(html) && /sandbox="[^"]*"/.test(html) && !/sandbox="[^"]*allow-same-origin/.test(html));
+check('样式含词典小窗抽屉', /\.dict-panel\s*\{/.test(readFileSync(path.join(ROOT, 'css/app.css'), 'utf8')));
 
 /* 6. 新版前端代码已就位（分组框 / 难度统计 / 图标选择） */
 const readerSrc = readFileSync(path.join(ROOT, 'js/reader.js'), 'utf8');
@@ -71,6 +77,10 @@ check('reader 含分组文件夹卡渲染', readerSrc.indexOf('_folderCellHtml')
 check('reader 含难度评估（阶梯阅读法）', readerSrc.indexOf('levelOf') >= 0 && readerSrc.indexOf('i+1 理想区') >= 0);
 check('reader 含分组图标选择', readerSrc.indexOf('GROUP_ICONS') >= 0 && readerSrc.indexOf('openGroupDialog') >= 0);
 check('reader 含词频统计', readerSrc.indexOf('computeBookStats') >= 0);
+check('reader 含剑桥词典小窗逻辑（走本地转发）',
+  readerSrc.indexOf('dictionary.cambridge.org') >= 0 &&
+  readerSrc.indexOf('dict: {') >= 0 &&
+  readerSrc.indexOf('__proxy?url=') >= 0);
 const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
 check('样式含分组文件夹卡与加粗进度条', css.indexOf('.folder-cell') >= 0 && /\.book-prog \{[^}]*height: 8px/.test(css));
 check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\.8em/.test(css) && /\.book-author \{[^}]*height: 1\.35em/.test(css));
@@ -112,6 +122,7 @@ check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\
           aliyun: { apiKey: '', model: '' },
           alimt: { accessKeyId: '', accessKeySecret: '', edition: 'general', scene: 'social' },
           volcano: { apiKey: '', model: '' },
+          volmt3: { apiKey: '', resourceId: 'volc.speech.mt' },
           volmt: { accessKeyId: '', accessKeySecret: '' },
           deepl: { apiKey: '' }, ms: { apiKey: '', region: '' }, libre: { url: '', apiKey: '' },
           proxy: { on: false, url: '' }
@@ -120,7 +131,7 @@ check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\
       save() {}
     },
     translate: {
-      AUTO_ENGINES: ['youdao', 'aliyun', 'alimt', 'volcano', 'volmt', 'deepl', 'ms', 'libre', 'tencent'],
+      AUTO_ENGINES: ['youdao', 'aliyun', 'alimt', 'volcano', 'volmt3', 'volmt', 'deepl', 'ms', 'libre', 'tencent'],
       localProxyAvailable: async () => false
     }
   };
@@ -135,12 +146,16 @@ check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\
   const src = mountEl.innerHTML;
   check('设置页含默认引擎下拉与 8+ 引擎选项', /data-engine/.test(src) && (src.match(/<option value="/g) || []).length >= 12);
   check('设置页含 alimt 版本切换与场景下拉', src.indexOf('data-api-in="alimt.edition"') >= 0 && src.indexOf('data-api-in="alimt.scene"') >= 0);
+  check('设置页含 volmt3 卡片（API Key + 资源 ID）',
+    src.indexOf('data-card="volmt3"') >= 0 && src.indexOf('data-api-in="volmt3.apiKey"') >= 0 && src.indexOf('data-api-in="volmt3.resourceId"') >= 0);
+  check('默认引擎下拉含 volmt3 选项', src.indexOf('<option value="volmt3"') >= 0);
   check('设置页含密码显隐控件', src.indexOf('data-pw-eye') >= 0);
   check('设置页含自动模式排序 UI', src.indexOf('data-order-list') >= 0 && src.indexOf('data-order-reset') >= 0);
   const orderHtml = els['[data-order-list]'] ? els['[data-order-list]'].innerHTML : '';
   const names = [...orderHtml.matchAll(/order-name">([^<]+)</g)].map(m => m[1]);
-  check('排序列表渲染 9 个引擎且腾讯垫底', names.length === 9 && names[names.length - 1] === '腾讯云 TMT', names.join(','));
-  check('排序行含上移/下移按钮', (orderHtml.match(/data-order-up/g) || []).length === 9 && (orderHtml.match(/data-order-down/g) || []).length === 9);
+  check('排序列表渲染 10 个引擎且腾讯垫底', names.length === 10 && names[names.length - 1] === '腾讯云 TMT', names.join(','));
+  check('排序行含上移/下移按钮', (orderHtml.match(/data-order-up/g) || []).length === 10 && (orderHtml.match(/data-order-down/g) || []).length === 10);
+  check('分组标题显示已配置计数', src.indexOf('api-group-count') >= 0);
 }
 
 console.log(results.join('\n'));
