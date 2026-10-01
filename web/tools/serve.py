@@ -119,8 +119,16 @@ CORS_HEADERS = {
     'Access-Control-Max-Age': '600',
 }
 
-# 转发时透传的请求头
-PASS_HEADERS = ('authorization', 'content-type', 'accept', 'accept-language', 'user-agent')
+# 转发时忽略的请求头（其余一律透传，与桌面版 LocalServer.cs 的 SkipHeader 保持一致）。
+# 为什么用黑名单：各家接口的鉴权头五花八门（x-api-key / X-Api-Resource-Id / Ocp-Apim-Subscription-Key …），
+# 白名单漏一个就会变成「本地转发下报缺参数、直连却正常」的隐蔽故障。
+SKIP_HEADERS = {
+    'host', 'content-length', 'connection', 'accept-encoding',   # accept-encoding 必须去掉：上游压缩后我们不解压
+    'origin', 'referer', 'cookie',
+    'if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since', 'range',
+    'te', 'upgrade', 'expect', 'proxy-authorization', 'proxy-connection',
+    'content-encoding', 'transfer-encoding',
+}
 
 # 默认 User-Agent：部分站点（如剑桥词典的 Cloudflare 防护）会直接拒绝 Python-urllib 的默认 UA
 DEFAULT_UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -315,10 +323,12 @@ class Handler(SimpleHTTPRequestHandler):
             body = self.rfile.read(length)
 
         req = urllib.request.Request(target, data=body, method=self.command)
-        for name in PASS_HEADERS:
-            val = self.headers.get(name)
-            if val:
-                req.add_header(name, val)
+        # 除跳过列表外一律透传（自定义鉴权头如 x-api-key / Ocp-Apim-Subscription-Key 都在其中）
+        for name, val in self.headers.items():
+            low = name.lower()
+            if low in SKIP_HEADERS or low.startswith('sec-') or low.startswith('x-ink'):
+                continue
+            req.add_header(name, val)
         # 调用方没带 UA 时补一个浏览器 UA（否则 Cloudflare 等会按 UA 直接拒绝）
         if not self.headers.get('User-Agent'):
             req.add_header('User-Agent', DEFAULT_UA)

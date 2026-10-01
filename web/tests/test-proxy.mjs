@@ -101,5 +101,34 @@ try {
   }
 } catch (e) { check('剑桥小窗经转发', false, e.message); }
 
+/* 9. 自定义鉴权头必须透传到上游。
+   回归背景：旧实现只放行了 authorization/content-type/accept/accept-language 四个头，
+   于是 x-api-key（火山机器翻译 v3）、Ocp-Apim-Subscription-Key（微软翻译）等会被静默丢掉，
+   表现是「网页版经转发报缺参数、桌面版直连正常」这种极难定位的故障。
+   这里用无效 Key 打火山 v3 接口：透传成功 → 上游回 “Invalid X-Api-Key”；被吞掉 → 回 “missing X-Api-Key”。 */
+const OPENSPEECH = 'https://openspeech.bytedance.com/api/v3/machine_translation/matx_translate';
+try {
+  const r = await fetch(BASE + '/__proxy?url=' + encodeURIComponent(OPENSPEECH), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': 'invalid-key-for-test',
+      'X-Api-Resource-Id': 'volc.speech.mt',
+      'X-Api-Request-Id': 'test-request-id-0123456789abcdef'
+    },
+    body: JSON.stringify({ source_language: 'auto', target_language: 'zh', text_list: ['hello'] })
+  });
+  let j = null;
+  try { j = await r.json(); } catch (e) { /* 非 JSON */ }
+  const msg = String((j && j.message) || '');
+  if (!msg) {
+    results.push('SKIP 自定义鉴权头透传（上游无响应 status=' + r.status + '）');
+  } else {
+    check('自定义鉴权头透传：x-api-key 到达上游',
+      !/missing/i.test(msg) && /key/i.test(msg), msg);
+    check('自定义鉴权头透传：X-Api-Request-Id 到达上游', !/missing X-Api-Request-Id/i.test(msg), msg);
+  }
+} catch (e) { check('自定义鉴权头透传', false, e.message); }
+
 console.log(results.join('\n'));
 console.log('FAILS=' + results.filter(r => r.startsWith('FAIL')).length + '/' + results.length);
