@@ -14,6 +14,9 @@ const ROOT = path.join(__dirname, '..', '..');
 const EDGE = process.env.EDGE || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const PORT = 9227, SRV = 8649;
 const PROFILE = path.join(__dirname, 'edge-prof-round7-' + Date.now());   /* 唯一：避免 Edge 单实例复用旧页面 */
+/* 存档沙箱：应用会把设置/书籍/词库写入存档目录（默认 = 用户文档\InkRead）。
+   测试必须隔离，否则会污染用户真实存档，且新 profile 会 restore 出上次的测试数据。 */
+const SANDBOX = path.join(__dirname, '_store-sandbox-r7-' + Date.now());
 try { rmSync(PROFILE, { recursive: true, force: true }); } catch (e) { /* 新目录 */ }
 
 const PY = process.env.PY || 'python';
@@ -27,6 +30,7 @@ const killAll = () => {
   try { edge.kill(); } catch { /* 已退出 */ }
   try { server.kill(); } catch { /* 已退出 */ }
   try { rmSync(PROFILE, { recursive: true, force: true }); } catch { /* Edge 还没完全退出，留着下次清 */ }
+  try { rmSync(SANDBOX, { recursive: true, force: true }); } catch { /* 同上 */ }
 };
 process.on('exit', killAll);
 
@@ -71,6 +75,12 @@ const j = s => {
 const box = async sel => await evl(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return null;const r=e.getBoundingClientRect();return {l:Math.round(r.left),t:Math.round(r.top),w:Math.round(r.width),h:Math.round(r.height),vis:!e.closest('[hidden]')}})()`);
 
 await send('Page.enable');
+/* 页面脚本执行前种入 settings：存档目录指向本次沙箱（空目录 → 无旧状态可还原） */
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `
+  try {
+    localStorage.setItem('ir.settings', JSON.stringify({ storageDir: ${JSON.stringify(SANDBOX)} }));
+  } catch (e) {}
+` });
 await send('Page.navigate', { url: `http://127.0.0.1:${SRV}/index.html?demo=1&_t=${Date.now()}` });
 for (let i = 0; i < 60; i++) { await sleep(400); if (await evl(`document.documentElement.dataset.boot`) === '1') break; }
 for (let i = 0; i < 25; i++) { if (await evl(`document.querySelectorAll('.article .w').length`) > 0) break; await sleep(400); }
@@ -322,6 +332,8 @@ await evl(`(async()=>{
   IR.settings.save();
   return 1;
 })()`);
+await sleep(1500);   /* 等 filestore 防抖（700ms）落盘到沙箱 */
+console.log('STORE ' + await evl(`JSON.stringify({ dir: IR.filestore.dir() })`));
 
 console.log(res.join('\n'));
 console.log('FAILS=' + res.filter(r => r.startsWith('FAIL')).length + '/' + res.length);

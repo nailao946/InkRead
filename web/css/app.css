@@ -204,6 +204,42 @@ input[type="range"] { accent-color: var(--accent); }
   border-radius: var(--radius); padding: 1.1rem 1.2rem; margin-bottom: 1rem;
 }
 .settings-section { margin-bottom: 1.4rem; }
+
+/* ---------- 设置页左侧悬浮 tab 栏 ---------- */
+.settings-layout { display: flex; gap: 1.1rem; align-items: flex-start; }
+.settings-tabs {
+  position: sticky; top: 66px; z-index: 5;      /* 顶栏是 sticky，tab 栏贴在它下面 */
+  flex: 0 0 118px;
+  display: flex; flex-direction: column; gap: .3rem;
+  background: var(--bg-panel); border: 1px solid var(--border-soft);
+  border-radius: var(--radius); padding: .5rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,.12);
+}
+.settings-tabs button {
+  text-align: left; border: none; background: none; color: var(--text-2);
+  padding: .42rem .6rem; border-radius: 6px; font-size: .85rem;
+  border-left: 2px solid transparent; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.settings-tabs button:hover { background: var(--bg-hover); color: var(--text); }
+.settings-tabs button.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-2); border-left-color: var(--accent-2); font-weight: 600;
+}
+.settings-body { flex: 1; min-width: 0; }
+.settings-body .settings-section { scroll-margin-top: 72px; }  /* 平滑滚动落点：别被顶栏盖住 */
+
+/* 窄屏：tab 栏转成横向吸顶条（左侧放不下），滚动落点相应下移 */
+@media (max-width: 900px) {
+  .settings-layout { flex-direction: column; gap: .8rem; }
+  .settings-tabs {
+    position: sticky; top: 50px; flex-basis: auto; flex-direction: row;
+    overflow-x: auto; width: 100%; padding: .35rem; gap: .2rem;
+  }
+  .settings-tabs button { border-left: none; border-bottom: 2px solid transparent; }
+  .settings-tabs button.active { border-left-color: transparent; border-bottom-color: var(--accent-2); }
+  .settings-body .settings-section { scroll-margin-top: 116px; }
+}
 .settings-row { display: flex; align-items: center; gap: .8rem; margin: .55rem 0; flex-wrap: wrap; }
 .settings-row label { min-width: 110px; color: var(--text-2); font-size: .9rem; }
 .settings-row label.switch { min-width: 0; }

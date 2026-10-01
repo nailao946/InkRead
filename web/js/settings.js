@@ -77,12 +77,22 @@ IR.settingsPage = {
     };
 
     mountEl.innerHTML = `
-      <div class="panel settings-section">
+      <div class="settings-layout">
+      <nav class="settings-tabs" data-tabs title="点击跳转到对应设置">
+        <button data-tab="theme">主题</button>
+        <button data-tab="colors">标注三色</button>
+        <button data-tab="tts">发音</button>
+        <button data-tab="translate">翻译接口</button>
+        <button data-tab="storage">存储与存档</button>
+        <button data-tab="data">数据与配置</button>
+      </nav>
+      <div class="settings-body">
+      <div class="panel settings-section" data-sec="theme">
         <h3>主题</h3>
         <div class="theme-cards" data-role="themes"></div>
         <p class="settings-note">5 套主题随时切换，所有界面（阅读器 / 词库 / 弹窗）同步生效。</p>
       </div>
-      <div class="panel settings-section">
+      <div class="panel settings-section" data-sec="colors">
         <h3>单词标注三色</h3>
         <div class="settings-row"><label>生词（不会）</label><input type="color" class="input" data-color="unknown" value="${curCol('unknown')}"><span class="settings-note" style="margin:0">词库里没有的词</span></div>
         <div class="settings-row"><label>在学</label><input type="color" class="input" data-color="learning" value="${curCol('learning')}"><span class="settings-note" style="margin:0">标记为「在学」的词</span></div>
@@ -90,7 +100,7 @@ IR.settingsPage = {
         <div class="settings-row"><button class="btn btn-ghost" data-reset-colors>恢复主题默认色</button></div>
         <p class="settings-note">自定义颜色优先于主题默认色，对所有主题生效。</p>
       </div>
-      <div class="panel settings-section">
+      <div class="panel settings-section" data-sec="tts">
         <h3>发音（本地 TTS）</h3>
         <div class="settings-row"><label>音色</label><select class="input" data-tts-voice style="min-width:260px"></select></div>
         <div class="settings-row"><label>语速</label><input type="range" min="0.5" max="1.5" step="0.05" value="${(s.tts && s.tts.rate) || 0.9}" data-tts-rate style="width:180px"><span data-tts-rate-val>${(s.tts && s.tts.rate) || 0.9}x</span></div>
@@ -99,7 +109,7 @@ IR.settingsPage = {
         <p class="settings-note">调用 Windows 本地语音（微软 David / Zira 等）。列表为空时，先在系统「设置 → 时间和语言 → 语音」添加英语语音包。</p>
       </div>
 
-      <div class="panel settings-section">
+      <div class="panel settings-section" data-sec="translate">
         <h3>翻译接口</h3>
 
         <div class="api-toolbar">
@@ -280,7 +290,7 @@ IR.settingsPage = {
         </details>
       </div>
 
-      <div class="panel settings-section">
+      <div class="panel settings-section" data-sec="storage">
         <h3>存储与存档</h3>
         <div class="settings-row">
           <label>存档目录</label>
@@ -296,7 +306,7 @@ IR.settingsPage = {
         </div>
         <p class="settings-note">生词 / 书籍 / 设置自动写入存档目录，重开自动还原；点「查看存档说明」看文件清单。</p>
       </div>
-      <div class="panel settings-section">
+      <div class="panel settings-section" data-sec="data">
         <h3>数据与配置</h3>
         <div class="settings-row">
           <button class="btn btn-primary" data-act="export-config">导出配置（含 API Key）</button>
@@ -310,7 +320,9 @@ IR.settingsPage = {
           <input type="file" accept=".json" data-bk-file hidden>
         </div>
         <p class="settings-note">全量备份额外含生词库；恢复后自动刷新。数据只存本机，不上传。</p>
-      </div>`;
+      </div>
+      </div><!-- /settings-body -->
+      </div><!-- /settings-layout -->`;
 
     /* ---------- 主题卡片 ---------- */
     const themesEl = IR.$('[data-role="themes"]', mountEl);
@@ -627,5 +639,37 @@ IR.settingsPage = {
       if (cfgInput.files[0]) IR.importConfig(cfgInput.files[0]);
       cfgInput.value = '';
     });
+
+    /* 左侧悬浮 tab 栏（点击跳分区 + 滚动高亮） */
+    this._bindSettingTabs(mountEl);
+  },
+
+  /* ---------- 左侧悬浮 tab 栏：点击平滑滚到对应分区；滚动时高亮当前所在分区 ----------
+     mount 可能被反复调用（恢复默认色后重挂），先解绑旧的 scroll 监听再挂新的，避免重复累积 */
+  _bindSettingTabs(mountEl) {
+    const tabs = IR.$$('.settings-tabs button', mountEl);
+    if (!tabs.length) return;
+    tabs.forEach(b => b.addEventListener('click', () => {
+      const sec = IR.$(`.settings-body [data-sec="${b.dataset.tab}"]`, mountEl);
+      if (sec && sec.scrollIntoView) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    const sync = () => {
+      const pageEl = document.querySelector('#page-settings');
+      if (pageEl && pageEl.classList && !pageEl.classList.contains('active')) return;   /* 设置页没开着不用同步 */
+      const secs = IR.$$('.settings-body .settings-section', mountEl);
+      if (!secs.length) return;
+      let cur = 0;
+      /* 已经滚到页面最底时直接高亮最后一个分区——最后一个分区下方内容往往不足一屏，
+         它永远到不了顶部阈值，不特殊处理的话滚到底最后一个 tab 永远不亮 */
+      const doc = document.documentElement;
+      const atBottom = (window.scrollY || doc.scrollTop || 0) + window.innerHeight >= doc.scrollHeight - 4;
+      if (atBottom) cur = secs.length - 1;
+      else secs.forEach((sec, i) => { if (sec.getBoundingClientRect().top <= 120) cur = i; });
+      tabs.forEach((b, i) => b.classList.toggle('active', i === cur));
+    };
+    if (this._tabOff && typeof window.removeEventListener === 'function') window.removeEventListener('scroll', this._tabOff);
+    this._tabOff = IR.debounce(sync, 120);
+    if (typeof window.addEventListener === 'function') window.addEventListener('scroll', this._tabOff, { passive: true });
+    sync();
   }
 };

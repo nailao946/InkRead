@@ -143,6 +143,23 @@ try {
     'n=' + n + ' tear down=' + obj['tear down']);
 } catch (e) { check('词组数据可用（2 万+ 条，含 tear down / in spite of）', false, e.message); }
 
+/* 6d. 第 8 轮改动：返回书架收起翻页控件 / 右键分组可管理 / 设置页悬浮 tab 栏 */
+const settingsSrc = readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
+check('返回书架把翻页控件一并收起（翻页箭头 / 页码 / 划词按钮 / 弹窗）',
+  /showShelf\(\) \{[\s\S]{0,900}#pageNav'\)\.hidden = true[\s\S]{0,220}#pageIndicator'\)\.hidden = true[\s\S]{0,220}#selTransBtn'\)\.hidden = true/.test(readerSrc) &&
+  /showShelf\(\) \{[\s\S]{0,900}dict\.close\(\)/.test(readerSrc));
+check('右键分组文件夹卡 → 打开分组管理（重命名 / 图标 / 删除）',
+  /oncontextmenu[\s\S]{0,300}cell\.dataset\.goto[\s\S]{0,80}openGroupDialog\('edit', cell\.dataset\.goto\)/.test(readerSrc));
+check('设置页有左侧悬浮 tab 栏（6 个分区锚点 + 点击跳转 + 滚动高亮）',
+  settingsSrc.indexOf('.settings-tabs') >= 0 && settingsSrc.indexOf('_bindSettingTabs') >= 0 &&
+  (settingsSrc.match(/data-sec="/g) || []).length >= 6 &&
+  settingsSrc.indexOf('scrollIntoView') >= 0 && settingsSrc.indexOf("classList.toggle('active'") >= 0 &&
+  /\.settings-tabs \{[\s\S]{0,200}position: sticky/.test(css) &&
+  /\.settings-body \.settings-section \{ scroll-margin-top/.test(css) &&
+  html.indexOf('settingsMount') >= 0);
+check('设置 tab 高亮「滚到底即末区」（末尾内容不足一屏时最后一个 tab 也能亮）',
+  /atBottom/.test(settingsSrc) && /secs\.length - 1/.test(settingsSrc));
+
 /* 7. 设置页挂载冒烟：settings.js 的 mount() 必须不抛错且关键结构齐全
    （防回归：曾在真机报 "extra is not defined" 而测试全绿——本节补上这层覆盖） */
 {

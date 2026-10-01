@@ -17,6 +17,8 @@ web/tests/edge-prof-*/
 web/tests/*.txt
 web/tests/v-*.png
 web/tests/_*.mjs
+web/tests/_store-backup-*/
+web/tests/_store-sandbox*/
 web/tools/__pycache__/
 **/__pycache__/
 tools/store-test/

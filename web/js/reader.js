@@ -369,6 +369,8 @@ IR.reader = {
       const cell = e.target.closest('.book-card') || e.target.closest('.sg-cell');
       if (!cell) return;
       e.preventDefault();
+      /* 右键分组文件夹卡 → 管理 / 编辑这个分组（重命名 / 图标 / 删除） */
+      if (cell.dataset.goto) { this.openGroupDialog('edit', cell.dataset.goto); return; }
       this.openBookDetail(cell.dataset.id);
     };
     barEl.onclick = e => {
@@ -676,6 +678,7 @@ IR.reader = {
   showShelf() {
     this._flushRead();          /* 回到书架：把阅读时长与进度落库 */
     this._stopReadTimer();
+    this.speech.stop();
     IR.$('#shelfView').hidden = false;
     IR.$('#readingView').hidden = true;
     IR.$('#tocPanel').hidden = true;
@@ -683,6 +686,15 @@ IR.reader = {
     IR.$('#tocFab').hidden = true;
     IR.$('#tocSide').hidden = true;
     IR.$('#fontPanel').hidden = true;
+    document.body.classList.remove('toc-open');
+    /* 修复：翻页箭头 / 页码 / 划词翻译按钮 / 词组弹窗 / 剑桥抽屉都是全局 fixed 元素，
+       不会随视图切换自动隐藏——「返回书架」也要一并收起，否则会浮在书架上 */
+    IR.$('#pageNav').hidden = true;
+    IR.$('#pageIndicator').hidden = true;
+    IR.$('#selTransBtn').hidden = true;
+    const wp = IR.$('#wordPopup');
+    if (wp) this._closePopup(wp);
+    this.dict.close();
     if (this.articleEl) this.articleEl.innerHTML = '';
     this.initShelf();
   },
