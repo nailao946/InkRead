@@ -2,7 +2,7 @@
  * 策略：network-first（改动即时生效），离线时回退缓存——兼顾开发与离线阅读
  * 改动前端资源后，请递增 CACHE_VERSION 以触发缓存刷新。
  */
-const CACHE_VERSION = 'inkread-v4';
+const CACHE_VERSION = 'inkread-v5';
 const CACHE_NAME = 'inkread-shell-' + CACHE_VERSION;
 
 // 预缓存清单：全部为相对于 sw.js 的路径（sw.js 位于站点根目录）

@@ -590,12 +590,14 @@ namespace InkRead
                     if (resp.StatusCode != HttpStatusCode.NoContent)
                         body = await resp.Content.ReadAsByteArrayAsync();
                 }
-                /* 内嵌网页（如剑桥词典小窗）：把根相对资源改写成上游绝对地址，样式/脚本才不会 404 */
+                /* 内嵌网页（如剑桥词典小窗）：统一预处理 ——
+                   根相对链接改写（样式/脚本不发 404）+ 剥离广告检测脚本（消除反广告墙）+ 注入兜底脚本。
+                   与 web/tools/serve.py 的 prepare_embedded_page 保持一致。 */
                 if (body != null && body.Length > 0 && respCt != null &&
                     respCt.IndexOf("text/html", StringComparison.OrdinalIgnoreCase) >= 0 &&
                     Array.IndexOf(RewriteRootRelHosts, uri.Host.ToLowerInvariant()) >= 0)
                 {
-                    body = Encoding.UTF8.GetBytes(RewriteRootRelative(Encoding.UTF8.GetString(body), uri.Host));
+                    body = Encoding.UTF8.GetBytes(PrepareEmbeddedPage(Encoding.UTF8.GetString(body), uri.Host));
                     respCt = "text/html; charset=utf-8";
                 }
                 await WriteResponse(s, (int)resp.StatusCode, resp.ReasonPhrase ?? "OK",
@@ -617,6 +619,124 @@ namespace InkRead
                      : m.Groups[1].Value + "=" + m.Groups[2].Value + b + m.Groups[3].Value + m.Groups[2].Value);
             html = Regex.Replace(html, "(?i)url\\(\\s*([\"']?)/(?!/)", m => "url(" + m.Groups[1].Value + b + "/");
             return html;
+        }
+
+        /* ---------- 反广告墙处理（与 web/tools/serve.py 等价，改动需同步） ---------- */
+
+        /* 广告检测（反广告墙）脚本域名：剑桥词典靠这些 SDK 判断「广告是否被拦截」，
+           一旦判定被拦（装了广告拦截插件、或 doubleclick 等广告域不可达，国内很常见），
+           就弹整屏「请在本站允许广告」遮罩，把词典内容完全盖住。
+           内嵌小窗里用户无法也不需要「允许广告」，因此转发时直接剥掉这些纯广告/检测脚本，
+           保留正文、样式与发音资源（已实测：这些脚本不加载时词条内容完全正常）。 */
+        private static readonly string[] AdDetectHosts = { "html-load.com", "polarbyte.com" };
+
+        /* 匹配 src="http…" / href="http…"，用属性级替换而非标签级解析：
+           剑桥页面里有畸形片段（如 src="…6.0.83"" 多一个引号），任何依赖标签边界的解析都会被带偏，
+           属性级替换天然免疫。 */
+        private static readonly Regex AdDetectAttrRe =
+            new Regex("(?i)\\b(src|href)\\s*=\\s*([\"'])(https?://[^\"']*)\\2", RegexOptions.Compiled);
+
+        private static bool IsAdDetectHost(string url)
+        {
+            try
+            {
+                string h = new Uri(url).Host.ToLowerInvariant();
+                foreach (string b in AdDetectHosts)
+                    if (h == b || h.EndsWith("." + b, StringComparison.Ordinal)) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        /* 只做「属性级中和」：把命中域名的 src/href 改名成 data-inkread-blocked（标签还在，
+           但没有 src 就不会加载），HTML 结构保持原样。 */
+        private static string StripAdDetect(string html)
+        {
+            return AdDetectAttrRe.Replace(html, m =>
+                IsAdDetectHost(m.Groups[3].Value)
+                    ? "data-inkread-blocked=" + m.Groups[2].Value + m.Groups[3].Value + m.Groups[2].Value
+                    : m.Value);
+        }
+
+        /* 注入到被代理页面 <head> 开头的兜底脚本（两件事）：
+             ① 给沙箱 iframe 补 localStorage/sessionStorage/document.cookie 垫片（无 allow-same-origin 时访问会抛错）
+             ② 万一将来换了检测方案又弹墙，用「文案 + 整屏遮罩特征」把墙摘掉并恢复滚动 */
+        private const string AdDefuserJs = """
+        (function () {
+          /* ① 沙箱 iframe（无 allow-same-origin）里访问 storage / cookie 会抛 SecurityError，
+                部分检测脚本会把它当成「被拦截」的信号，这里补内存垫片让访问不再抛错。 */
+          function shimStorage(name) {
+            try { void window[name]; return; } catch (e) {}
+            try {
+              var m = {};
+              var api = {
+                getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+                setItem: function (k, v) { m[String(k)] = String(v); },
+                removeItem: function (k) { delete m[String(k)]; },
+                clear: function () { m = {}; },
+                key: function (i) { return Object.keys(m)[i] || null; }
+              };
+              Object.defineProperty(api, 'length', { get: function () { return Object.keys(m).length; } });
+              Object.defineProperty(window, name, { get: function () { return api; }, configurable: true });
+            } catch (e) {}
+          }
+          shimStorage('localStorage'); shimStorage('sessionStorage');
+          try { void document.cookie; } catch (e) {
+            try {
+              Object.defineProperty(document, 'cookie', {
+                get: function () { return ''; }, set: function () {}, configurable: true
+              });
+            } catch (e2) {}
+          }
+
+          /* ② 反广告墙清除：只摘「文案像墙 + 像整屏遮罩」的元素，不动正常正文 */
+          var WALL_TEXT = /允许广告|本站依靠广告收入|允许我们显示广告|allow ads on|ad block|adblock detected|广告拦截/i;
+          function isWall(el) {
+            var t = (el.innerText || '').trim();
+            if (!t || t.length > 600 || !WALL_TEXT.test(t)) return false;
+            var cs = window.getComputedStyle ? getComputedStyle(el) : null;
+            var pos = cs ? cs.position : '';
+            var z = cs ? parseInt(cs.zIndex || '0', 10) : 0;
+            var r = el.getBoundingClientRect();
+            var covers = r.width * r.height > innerWidth * innerHeight * 0.25;
+            return covers || ((pos === 'fixed' || pos === 'absolute') && z >= 50);
+          }
+          function sweep() {
+            var list = document.querySelectorAll('div,section,aside,dialog,main');
+            for (var i = 0; i < list.length; i++) {
+              if (isWall(list[i])) {
+                try { list[i].remove(); } catch (e) { list[i].style.display = 'none'; }
+                try {
+                  if (document.body && (document.body.style.overflow === 'hidden' || document.body.style.overflowY === 'hidden')) {
+                    document.body.style.overflow = ''; document.body.style.overflowY = '';
+                  }
+                  if (document.documentElement && document.documentElement.style.overflow === 'hidden') {
+                    document.documentElement.style.overflow = '';
+                  }
+                } catch (e) {}
+              }
+            }
+          }
+          var n = 0;
+          var iv = setInterval(function () { sweep(); if (++n > 40) clearInterval(iv); }, 1000);
+          try { document.addEventListener('DOMContentLoaded', sweep); } catch (e) {}
+          sweep();
+        })();
+        """;
+
+        private static string InjectDefuser(string html)
+        {
+            string block = "<script data-inkread=\"defuser\">" + AdDefuserJs + "</script>";
+            Match m = Regex.Match(html, "(?i)<head\\b[^>]*>");
+            if (m.Success)
+                return html.Substring(0, m.Index + m.Length) + block + html.Substring(m.Index + m.Length);
+            return block + html;
+        }
+
+        /* 内嵌第三方页面的统一预处理：根相对链接改写 → 剥离广告检测 → 注入兜底脚本。 */
+        private static string PrepareEmbeddedPage(string html, string host)
+        {
+            return InjectDefuser(StripAdDetect(RewriteRootRelative(html, host)));
         }
 
         /* 默认 User-Agent：转发缺省时使用（浏览器 UA，避免被站点按 UA 拒绝） */

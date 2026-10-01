@@ -139,6 +139,112 @@ DEFAULT_UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
 # 重写成上游绝对地址后即可正常加载样式与脚本。
 REWRITE_ROOT_REL_HOSTS = ('dictionary.cambridge.org',)
 
+# 广告检测（反广告墙）脚本域名：剑桥词典靠这些 SDK 判断「广告是否被拦截」，
+# 一旦判定被拦（装了广告拦截插件、或 doubleclick 等广告域不可达，国内很常见），
+# 就弹整屏「请在本站允许广告」遮罩，把词典内容完全盖住。
+# 内嵌小窗里用户无法也不需要「允许广告」，因此在转发时直接剥掉这些纯广告/检测脚本，
+# 保留正文、样式与发音资源（已实测：这些脚本不加载时词条内容完全正常）。
+AD_DETECT_HOSTS = ('html-load.com', 'polarbyte.com')
+
+# 注入到被代理页面 <head> 开头的兜底脚本（两件事）：
+#   ① 给沙箱 iframe 补 localStorage/sessionStorage/document.cookie 垫片（无 allow-same-origin 时访问会抛错）
+#   ② 万一将来换了检测方案又弹墙，用「文案 + 整屏遮罩特征」把墙摘掉并恢复滚动
+# 注意：桌面版 LocalServer.cs 里有一份等价实现，改动需同步。
+AD_DEFUSER_JS = r"""
+(function () {
+  /* ① 沙箱 iframe（无 allow-same-origin）里访问 storage / cookie 会抛 SecurityError，
+        部分检测脚本会把它当成「被拦截」的信号，这里补内存垫片让访问不再抛错。 */
+  function shimStorage(name) {
+    try { void window[name]; return; } catch (e) {}
+    try {
+      var m = {};
+      var api = {
+        getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+        setItem: function (k, v) { m[String(k)] = String(v); },
+        removeItem: function (k) { delete m[String(k)]; },
+        clear: function () { m = {}; },
+        key: function (i) { return Object.keys(m)[i] || null; }
+      };
+      Object.defineProperty(api, 'length', { get: function () { return Object.keys(m).length; } });
+      Object.defineProperty(window, name, { get: function () { return api; }, configurable: true });
+    } catch (e) {}
+  }
+  shimStorage('localStorage'); shimStorage('sessionStorage');
+  try { void document.cookie; } catch (e) {
+    try {
+      Object.defineProperty(document, 'cookie', {
+        get: function () { return ''; }, set: function () {}, configurable: true
+      });
+    } catch (e2) {}
+  }
+
+  /* ② 反广告墙清除：只摘「文案像墙 + 像整屏遮罩」的元素，不动正常正文 */
+  var WALL_TEXT = /允许广告|本站依靠广告收入|允许我们显示广告|allow ads on|ad block|adblock detected|广告拦截/i;
+  function isWall(el) {
+    var t = (el.innerText || '').trim();
+    if (!t || t.length > 600 || !WALL_TEXT.test(t)) return false;
+    var cs = window.getComputedStyle ? getComputedStyle(el) : null;
+    var pos = cs ? cs.position : '';
+    var z = cs ? parseInt(cs.zIndex || '0', 10) : 0;
+    var r = el.getBoundingClientRect();
+    var covers = r.width * r.height > innerWidth * innerHeight * 0.25;
+    return covers || ((pos === 'fixed' || pos === 'absolute') && z >= 50);
+  }
+  function sweep() {
+    var list = document.querySelectorAll('div,section,aside,dialog,main');
+    for (var i = 0; i < list.length; i++) {
+      if (isWall(list[i])) {
+        try { list[i].remove(); } catch (e) { list[i].style.display = 'none'; }
+        try {
+          if (document.body && (document.body.style.overflow === 'hidden' || document.body.style.overflowY === 'hidden')) {
+            document.body.style.overflow = ''; document.body.style.overflowY = '';
+          }
+          if (document.documentElement && document.documentElement.style.overflow === 'hidden') {
+            document.documentElement.style.overflow = '';
+          }
+        } catch (e) {}
+      }
+    }
+  }
+  var n = 0;
+  var iv = setInterval(function () { sweep(); if (++n > 40) clearInterval(iv); }, 1000);
+  try { document.addEventListener('DOMContentLoaded', sweep); } catch (e) {}
+  sweep();
+})();
+"""
+
+def strip_ad_detect(html):
+    """让广告检测脚本不加载（反广告墙就不会出现）。
+
+    只做「属性级中和」：把命中域名的 src/href 改名成 data-inkread-blocked（标签还在，
+    但没有 src 就不会加载），HTML 结构保持原样。
+    为什么不做标签级解析：剑桥页面里存在畸形片段（如 src="…6.0.83"" 多一个引号），
+    任何依赖标签边界的解析都会被带偏，属性级替换天然免疫。"""
+    pat = re.compile(r'(?i)\b(src|href)\s*=\s*(["\'])(https?://[^"\']*)\2')
+
+    def is_blocked(url):
+        try:
+            h = (urllib.parse.urlparse(url).hostname or '').lower()
+        except Exception:
+            return False
+        return bool(h) and any(h == b or h.endswith('.' + b) for b in AD_DETECT_HOSTS)
+
+    def repl(m):
+        if not is_blocked(m.group(3)):
+            return m.group(0)
+        return 'data-inkread-blocked=' + m.group(2) + m.group(3) + m.group(2)
+
+    return pat.sub(repl, html)
+
+
+def inject_defuser(html):
+    """把兜底脚本插到 <head> 最前面（尽早生效）。"""
+    block = '<script data-inkread="defuser">' + AD_DEFUSER_JS + '</script>'
+    m = re.search(r'(?i)<head\b[^>]*>', html)
+    if m:
+        return html[:m.end()] + block + html[m.end():]
+    return block + html
+
 
 def rewrite_root_relative(html, host):
     """把 HTML 里的根相对链接（href="/x"、src="/x"、url(/x)）改写为上游绝对地址。"""
@@ -153,6 +259,11 @@ def rewrite_root_relative(html, host):
     out = re.sub(r'(?i)\b(href|src)\s*=\s*(["\'])(/[^"\']*)', sub_attr, html)
     out = re.sub(r'(?i)url\(\s*(["\']?)/(?!/)', lambda m: 'url(' + (m.group(1) or '') + base + '/', out)
     return out
+
+
+def prepare_embedded_page(html, host):
+    """内嵌第三方页面的统一预处理：根相对链接改写 → 剥离广告检测 → 注入兜底脚本。"""
+    return inject_defuser(strip_ad_detect(rewrite_root_relative(html, host)))
 
 
 def default_store_root():
@@ -356,14 +467,15 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
-        # 内嵌网页（如剑桥词典小窗）：把根相对资源改写成上游绝对地址，样式/脚本才不会 404
+        # 内嵌网页（如剑桥词典小窗）：根相对资源改写 + 剥离广告检测脚本 + 注入兜底，
+        # 样式/脚本才不 404，也不会被「请在本站允许广告」整屏遮罩盖住
         if 'text/html' in ctype.lower() and (t.hostname or '').lower() in REWRITE_ROOT_REL_HOSTS:
             charset = 'utf-8'
             m = re.search(r'charset=([\w-]+)', ctype)
             if m:
                 charset = m.group(1)
             text = data.decode(charset, 'replace')
-            text = rewrite_root_relative(text, t.hostname)
+            text = prepare_embedded_page(text, t.hostname)
             data = text.encode('utf-8')
             if 'charset' in ctype.lower():
                 ctype = re.sub(r'(?i)charset=[\w-]+', 'charset=utf-8', ctype)

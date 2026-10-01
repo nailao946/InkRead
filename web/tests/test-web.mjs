@@ -160,6 +160,36 @@ check('设置页有左侧悬浮 tab 栏（6 个分区锚点 + 点击跳转 + 滚
 check('设置 tab 高亮「滚到底即末区」（末尾内容不足一屏时最后一个 tab 也能亮）',
   /atBottom/.test(settingsSrc) && /secs\.length - 1/.test(settingsSrc));
 
+/* 6e. 第 9 轮改动：词组「分开看」点 chip 切单词弹窗 / 剑桥词典反广告墙 */
+const REPO = path.join(__dirname, '..', '..');
+const servePy = readFileSync(path.join(ROOT, 'tools/serve.py'), 'utf8');
+const localServerSrc = readFileSync(path.join(REPO, 'wpf/LocalServer.cs'), 'utf8');
+check('词组「分开看」点 chip：阻止冒泡 + 传播路径兜底（不被自身点击误关）',
+  /action === 'w'[\s\S]{0,500}e\.stopPropagation\(\)/.test(readerSrc) &&
+  /composedPath\(\)\.includes\(popup\)/.test(readerSrc) &&
+  readerSrc.indexOf('_anchorRect') >= 0);
+check('词组「分开看」chip 目标已脱离 DOM 时按 data-w 回找',
+  /dataset\.w[\s\S]{0,220}querySelector\('\.article \.w\[data-w=/.test(readerSrc));
+check('反广告墙：属性级剥离广告检测脚本（html-load / polarbyte）',
+  servePy.indexOf('AD_DETECT_HOSTS') >= 0 && /'html-load\.com'/.test(servePy) && /'polarbyte\.com'/.test(servePy) &&
+  servePy.indexOf('def strip_ad_detect') >= 0 && servePy.indexOf('data-inkread-blocked') >= 0);
+check('反广告墙：注入兜底脚本（storage 垫片 + 文案特征摘墙 + 恢复滚动）',
+  servePy.indexOf('def inject_defuser') >= 0 && servePy.indexOf('AD_DEFUSER_JS') >= 0 &&
+  servePy.indexOf('def prepare_embedded_page') >= 0);
+check('桌面版 LocalServer.cs 同步了反广告墙实现（与 serve.py 等价）',
+  localServerSrc.indexOf('AdDetectHosts') >= 0 && localServerSrc.indexOf('StripAdDetect') >= 0 &&
+  localServerSrc.indexOf('InjectDefuser') >= 0 && localServerSrc.indexOf('PrepareEmbeddedPage') >= 0 &&
+  /PrepareEmbeddedPage\(Encoding\.UTF8\.GetString\(body\), uri\.Host\)/.test(localServerSrc));
+/* 剑桥词典经本地代理：广告检测脚本 src 应被中和、兜底脚本应注入、根相对链接应改写 */
+try {
+  const r = await fetch(BASE + '/__proxy?url=' + encodeURIComponent('https://dictionary.cambridge.org/dictionary/english/test'));
+  const t = await r.text();
+  const adSrc = (t.match(/<script[^>]*\bsrc\s*=\s*["'][^"']*(?:html-load|polarbyte)/gi) || []).length;
+  check('剑桥词典经代理：无广告检测脚本 src + 已注入兜底脚本 + 广告域属性已中和',
+    r.ok && adSrc === 0 && t.indexOf('data-inkread="defuser"') >= 0 && t.indexOf('data-inkread-blocked') >= 0,
+    'status=' + r.status + ' adSrc=' + adSrc + ' defuser=' + (t.indexOf('data-inkread="defuser"') >= 0));
+} catch (e) { check('剑桥词典经代理：无广告检测脚本 src + 已注入兜底脚本 + 广告域属性已中和', false, e.message); }
+
 /* 7. 设置页挂载冒烟：settings.js 的 mount() 必须不抛错且关键结构齐全
    （防回归：曾在真机报 "extra is not defined" 而测试全绿——本节补上这层覆盖） */
 {

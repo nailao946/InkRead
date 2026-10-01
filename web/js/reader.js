@@ -1171,7 +1171,10 @@ IR.reader = {
     document.addEventListener('click', e => {
       const sel = window.getSelection();
       const selLen = sel ? sel.toString().trim().length : 0;
-      const inPopup = e.target.closest('.word-popup');
+      /* inPopup 还要看事件原始传播路径（composedPath）：点击后若 popup.innerHTML 被整体替换，
+         e.target 会脱离 DOM，此时 closest('.word-popup') 变 null，会误判成「点在弹窗外」而关窗 */
+      const inPopup = !!(e.target.closest && e.target.closest('.word-popup')) ||
+        (typeof e.composedPath === 'function' && e.composedPath().includes(popup));
       if (selLen <= 1 && !inPopup && !e.target.closest('#selTransBtn') && !IR.$('#readingView').hidden) {
         /* 词组优先：点词组里任一个词 → 直接给整组翻译（不是单词） */
         const ph = e.target.closest('.ph');
@@ -1191,8 +1194,21 @@ IR.reader = {
       if (action === 'cam') return this.dict.open(isPhrase ? String(key || '').replace(/\s+/g, '-') : word);
       if (action === 'close') return this._closePopup(popup);
       if (action === 'w') {                                  /* 词组弹窗里的「分开看」：转成单词弹窗 */
-        const node = (this._phWords || [])[+op.dataset.idx];
+        /* 必须 stopPropagation：_openPopup 会整体替换 popup.innerHTML，被点的 chip 随即脱离 DOM；
+           事件继续冒泡到 document 时 e.target.closest('.word-popup') 已是 null（父链断了），
+           document 处理器会误判成「点在弹窗外」，把刚打开的单词弹窗立刻关掉。 */
+        e.stopPropagation();
+        let node = (this._phWords || [])[+op.dataset.idx];
+        /* 旧引用可能已因翻页重排而脱离文档 → 按词面找一个当前活着的同名词节点做锚点 */
+        if (!node || (node.isConnected === false)) {
+          const w = (node && node.dataset && node.dataset.w) || (op.textContent || '').trim();
+          if (w) {
+            try { node = document.querySelector('.article .w[data-w="' + (window.CSS && CSS.escape ? CSS.escape(w) : w) + '"]') || null; }
+            catch (err) { node = null; }
+          }
+        }
         if (node) this._openPopup(node, popup);
+        else IR.toast('这个词已不在当前页面（可能已翻页重排），请重新点词组', 'err');
         return;
       }
       if (action === 'trans') {
@@ -1252,7 +1268,7 @@ IR.reader = {
     popup.dataset.d = word;
     popup.dataset.m = entry && entry.meaning ? entry.meaning : '';   /* 当前已知的中文释义（标记时随词入库） */
     popup.hidden = false;
-    const r = span.getBoundingClientRect();
+    const r = this._anchorRect(span);
     const pw = popup.offsetWidth, ph = popup.offsetHeight;
     let x = r.left + r.width / 2 - pw / 2;
     x = Math.max(8, Math.min(x, innerWidth - pw - 8));
@@ -1391,6 +1407,18 @@ IR.reader = {
   },
 
   _closePopup(popup) { popup.hidden = true; },
+
+  /* 取锚点位置：节点若已脱离文档（翻页重排/整段重绘）宽高会是 0，
+     此时回退到屏幕中上方，避免弹窗跑到左上角。 */
+  _anchorRect(span) {
+    let r = null;
+    try { r = span && span.getBoundingClientRect ? span.getBoundingClientRect() : null; } catch (e) { r = null; }
+    if (!r || (!r.width && !r.height)) {
+      const cx = (typeof innerWidth === 'number' ? innerWidth : 800) / 2;
+      return { left: cx, width: 0, top: 96, bottom: 112 };
+    }
+    return r;
+  },
 
   /* ---------- 剑桥词典小窗（界面内右侧抽屉，不跳浏览器） ----------
      直接 iframe 剑桥官网会被 X-Frame-Options 拒绝，因此统一走本地转发 /__proxy：
