@@ -62,6 +62,40 @@ IR.fmtDate = ts => {
 IR.WORD_RE = /[A-Za-z][A-Za-z'’\-]*/;
 IR.tokenize = text => text.split(new RegExp('(' + IR.WORD_RE.source + ')')).filter(s => s !== '');
 
+/* ---------- 词组识别（用于「一条不断的线」）----------
+   规则：常用短语动词 + 后续小品词/介词，最多 3 词（come up with / put up with / look forward to）。
+   只在词组中至少有一个「生词」时才画线，避免给已掌握的词也划上一堆线。 */
+IR.PHRASAL_VERBS = new Set((
+  'tear break bring call carry come cut deal do drop fall figure fill find get give go grow hand hang hold ' +
+  'keep lay let look make move pass pay pick point pull push put run set show shut sit sort stand take talk ' +
+  'think throw turn walk watch work write wear wake wash blow burn bear beat brush build cheer clean clear ' +
+  'close count cover cross die draw drive eat end face fight fix focus follow force head hear hit join jump ' +
+  'kick knock lead leave lie live lock log mark mess nod open pack part phone play plug print quit reach rent ' +
+  'ring roll rule save see sell send settle shake share shoot sign slow spell split spread spring squeeze stay ' +
+  'stick stop store strike switch tie touch track trade try tune use vote wait warm wipe wonder wrap zoom'
+).split(' '));
+
+IR.PHRASE_PARTICLES = new Set((
+  'up down out in off on over away back through along around about into upon forward together apart aside ' +
+  'across by to with for at of after against between from under without'
+).split(' '));
+
+/* items 为交替序列：[{t:'w'|'x', s:'...'}, ...]（t='w' 单词，t='x' 其它文本，分隔符必须为空白）。
+   返回从第 i 项（须为单词项）起的词组单词数（2 或 3）；不是词组返回 0。 */
+IR.phraseLen = (items, i) => {
+  if (i >= items.length || items[i].t !== 'w') return 0;
+  const head = items[i].s.toLowerCase();
+  if (!IR.lemmas(head).some(x => IR.PHRASAL_VERBS.has(x))) return 0;
+  let n = 1, k = i;
+  while (n < 3) {
+    const sep = items[k + 1], nxt = items[k + 2];
+    if (!sep || sep.t !== 'x' || !/^\s+$/.test(sep.s)) break;
+    if (!nxt || nxt.t !== 'w' || !IR.PHRASE_PARTICLES.has(nxt.s.toLowerCase())) break;
+    n++; k += 2;
+  }
+  return n >= 2 ? n : 0;
+};
+
 /* ---------- 词形还原（启发式，M3 接入 ECDICT 词干库后升级） ----------
    返回候选词数组：原词在前，逐步剥离后缀的变体在后。
    阅读着色时按顺序在词库里查找第一个命中的候选。 */

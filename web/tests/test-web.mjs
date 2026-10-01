@@ -85,6 +85,27 @@ const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
 check('样式含分组文件夹卡与加粗进度条', css.indexOf('.folder-cell') >= 0 && /\.book-prog \{[^}]*height: 8px/.test(css));
 check('卡片信息行固定高度（对齐）', /\.book-title \{[^}]*height: 2\.8em/.test(css) && /\.book-author \{[^}]*height: 1\.35em/.test(css));
 
+/* 6b. 本轮改动：统计去重口径 / 词组连线 / 目录按钮不再压住左翻页 / 帮助文案配色 */
+const utilSrc = readFileSync(path.join(ROOT, 'js/util.js'), 'utf8');
+check('词组识别在 util 里（词形还原后匹配短语动词 + 小品词）',
+  utilSrc.indexOf('IR.phraseLen') >= 0 && utilSrc.indexOf('PHRASAL_VERBS') >= 0 && utilSrc.indexOf('PHRASE_PARTICLES') >= 0);
+check('统计按【不同单词】去重（100 个 the 只算 1 个）',
+  readerSrc.indexOf('_seenKeys') >= 0 && readerSrc.indexOf('按【不同单词】') >= 0);
+check('高频词只统计未学 / 生词本 / 在学（已学不进榜）',
+  /filter\(e => e\.status !== 'known'\)/.test(readerSrc));
+check('词组整组一条不断的线（.ph，组内词不再各自画线）',
+  /\.article \.ph \{[\s\S]{0,200}text-decoration: underline dotted/.test(css) &&
+  /\.article \.ph \.w-unknown[\s\S]{0,80}text-decoration: none/.test(css));
+check('目录按钮移到左下（不再与左翻页按钮重叠）',
+  /\.toc-fab \{[\s\S]{0,120}bottom: 22px/.test(css) && !/\.toc-fab \{[\s\S]{0,120}top: 50%/.test(css));
+check('翻页页高跟窗口走（dvh + resize 重排分页）',
+  css.indexOf('calc(100dvh - 175px)') >= 0 &&
+  readerSrc.indexOf('_repaginate') >= 0 && readerSrc.indexOf("addEventListener('resize'") >= 0);
+check('申请 Key 帮助文案不再用深蓝（走主题副色 --accent-2）',
+  /\.api-help-body a \{[\s\S]{0,200}var\(--accent-2\)/.test(css) &&
+  /\.api-help-body code \{[\s\S]{0,160}var\(--accent-2\)/.test(css) &&
+  css.indexOf('--bg-sunken') < 0);
+
 /* 7. 设置页挂载冒烟：settings.js 的 mount() 必须不抛错且关键结构齐全
    （防回归：曾在真机报 "extra is not defined" 而测试全绿——本节补上这层覆盖） */
 {

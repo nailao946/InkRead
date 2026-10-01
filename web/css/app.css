@@ -308,6 +308,18 @@ input[type="range"] { accent-color: var(--accent); }
 .w-learning { color: var(--w-learning); font-weight: 500; }
 .w-known { color: var(--w-known); }
 
+/* 词组（tearing down / come up with）：整组画【一条不断的线】，
+   组内单词自身不再单独画线，这样线是连续的、看得出是一个词组 */
+.article .ph {
+  text-decoration: underline dotted var(--w-unknown);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.article .ph .w,
+.article .ph .w-unknown,
+.article .ph .w-learning,
+.article .ph .w-known { text-decoration: none; }
+
 /* ---------- 点词弹窗 ---------- */
 .word-popup {
   position: fixed; z-index: 200; width: 300px; max-width: calc(100vw - 24px);
@@ -472,16 +484,18 @@ input[type="range"] { accent-color: var(--accent); }
   border-bottom: 1px solid var(--border-soft);
 }
 
-/* ---------- 悬浮目录按钮（三条杠） + 抽屉 ---------- */
+/* ---------- 悬浮目录按钮（三条杠） + 抽屉 ----------
+   放左下角：左下是空的（右下有进度百分比、底部中间有页码），
+   且不会和翻页模式的「上一页」按钮（左中）撞在一起 */
 .toc-fab {
-  position: fixed; left: 14px; top: 50%; transform: translateY(-50%);
+  position: fixed; left: 16px; bottom: 22px;
   width: 44px; height: 44px; border-radius: 50%;
   background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-2);
   display: flex; align-items: center; justify-content: center;
   z-index: 95; box-shadow: 0 3px 14px rgba(0,0,0,.28); cursor: pointer;
   transition: color .18s, border-color .18s, transform .18s;
 }
-.toc-fab:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-50%) scale(1.06); }
+.toc-fab:hover { color: var(--accent); border-color: var(--accent); transform: scale(1.06); }
 .toc-mask {
   position: fixed; inset: 0; z-index: 270; background: rgba(0,0,0,.42);
   opacity: 0; transition: opacity .26s;
@@ -514,9 +528,11 @@ body.toc-open .toc-panel { transform: translateX(0); }
 .reading-stats .c-learning { color: var(--w-learning); }
 .reading-stats .c-known { color: var(--w-known); }
 
-/* ---------- 翻页模式（微信读书式竖向分页） ---------- */
+/* ---------- 翻页模式（微信读书式竖向分页） ----------
+   页高跟着窗口走：窗口越大，每页装的内容越多（分页在 resize 时重算） */
 .article.paged {
   height: calc(100vh - 175px);
+  height: calc(100dvh - 175px);
   overflow: hidden;
   position: relative;
   padding: 1.2rem 1.6rem;
@@ -620,8 +636,19 @@ body.toc-open .toc-panel { transform: translateX(0); }
 .api-help > summary:hover { color: var(--accent); }
 .api-help-body { padding-top: .6rem; }
 .api-help-body p { margin: .45rem 0; font-size: .82rem; color: var(--text-2); line-height: 1.7; }
+/* 正文里的链接 / 代码一律走主题【副色】（默认主题就是暖黄），
+   不要用浏览器默认的深蓝——深色背景上深蓝又暗又刺眼 */
+.api-help-body a {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-2) 45%, transparent);
+  text-underline-offset: 2px;
+}
+.api-help-body a:hover { color: var(--accent); }
 .api-help-body code {
-  background: var(--bg-sunken, rgba(127,127,127,.14)); padding: .05rem .3rem;
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+  color: var(--accent);
+  padding: .05rem .3rem;
   border-radius: 4px; font-size: .78rem;
 }
 
@@ -796,6 +823,9 @@ body.toc-open .toc-panel { transform: translateX(0); }
 .bd-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
 .bd-chip { font-size: .78rem; background: var(--bg-raised); border: 1px solid var(--border-soft); border-radius: 99px; padding: .16rem .55rem; }
 .bd-chip i { font-style: normal; color: var(--text-3); font-size: .7rem; margin-left: .25rem; }
+.bd-chip.learning { border-color: var(--w-learning); }
+.bd-chip.new { border-color: var(--w-unknown); }
+.bd-stat-note { font-size: .72rem; color: var(--text-3); text-align: center; margin: -.3rem 0 .6rem; }
 
 /* 分组图标选择 */
 .icon-grid { display: flex; flex-wrap: wrap; gap: .35rem; }
@@ -966,4 +996,10 @@ body.toc-open .toc-panel { transform: translateX(0); }
   .api-grid { grid-template-columns: 1fr; }
   .reading-stats { display: none; }
   .legend-tip { display: none; }
+  /* 底部导航占位：目录按钮上移，翻页高度扣掉导航 */
+  .toc-fab { left: 12px; bottom: calc(4.6rem + env(safe-area-inset-bottom)); }
+  .article.paged {
+    height: calc(100vh - 175px - 4.2rem);
+    height: calc(100dvh - 175px - 4.2rem);
+  }
 }

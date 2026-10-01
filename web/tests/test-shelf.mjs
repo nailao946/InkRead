@@ -9,10 +9,17 @@ const ROOT = path.join(__dirname, '..');
 /* ---- 最小 DOM 桩（可捕获 innerHTML 与点击回调） ---- */
 const makeEl = (tag = 'div') => {
   const el = {
-    tagName: tag, _html: '', style: {}, dataset: {}, children: [], listeners: {},
+    tagName: tag, _html: '', style: {}, dataset: {}, children: [], listeners: {}, attrs: {},
     set innerHTML(v) { this._html = String(v); },
     get innerHTML() { return this._html; },
-    setAttribute() {}, appendChild(c) { this.children.push(c); return c; },
+    setAttribute(k, v) {
+      this.attrs[k] = String(v);
+      /* 记录 data-* → dataset，便于断言词组包层等结构 */
+      if (k.indexOf('data-') === 0) {
+        this.dataset[k.slice(5).replace(/-(\w)/g, (m, c) => c.toUpperCase())] = String(v);
+      }
+    },
+    appendChild(c) { this.children.push(c); return c; },
     addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); },
     closest() { return null; }, click() {}, remove() {},
     querySelector(sel) { return (store[sel] = store[sel] || makeEl()); },
@@ -27,6 +34,7 @@ globalThis.addEventListener = () => {};
 globalThis.document = {
   addEventListener() {}, dispatchEvent() {},
   createElement: t => makeEl(t),
+  createTextNode: t => ({ nodeType: 3, textContent: String(t), nodeValue: String(t) }),
   querySelector: sel => (store[sel] = store[sel] || makeEl()),
   querySelectorAll: () => []
 };
@@ -168,10 +176,14 @@ IR.vocab.statusMap = new Map([['the', 'known'], ['cat', 'learning']]);
 const fake = { id: 'bx', text: 'the cat sat on the mat the cat' };
 const s1 = await R.computeBookStats(fake);
 check('统计词次 8 / 不同词 5', s1.tokens === 8 && s1.unique === 5, JSON.stringify({ t: s1.tokens, u: s1.unique }));
-check('生词 3 / 在学 1 / 已学 1（按词形）', s1.unknown === 3 && s1.learning === 1 && s1.known === 1);
+check('生词 3 / 在学 1 / 已学 1（按不同单词去重：the 出现 3 次只算 1 个）', s1.unknown === 3 && s1.learning === 1 && s1.known === 1);
 check('可理解度 = 5/8', Math.abs(s1.coverage - 0.625) < 0.001, 'coverage=' + s1.coverage);
 check('低可理解度判为困难（挫败区）', s1.level === 4 && s1.levelText === '困难' && s1.tier === '挫败区');
-check('高频生词列表给出 3 个', s1.topUnknown.length === 3 && s1.topUnknown[0].c === 1);
+check('高频词只含未学 + 生词本 + 在学，已学不进榜（4 个，最高频是在学的 cat ×2）',
+  s1.topUnknown.length === 4 && s1.topUnknown[0].w === 'cat' && s1.topUnknown[0].c === 2 && s1.topUnknown[0].s === 'learning',
+  JSON.stringify(s1.topUnknown));
+check('高频词统计的是出现次数（不是去重后的 1）', s1.topUnknown.every(t => t.c >= 1) && s1.topUnknown.reduce((s, t) => s + t.c, 0) === 5);
+check('统计口径版本号已升级（老数据会重算）', s1.v === 2);
 check('阶梯档位阈值正确',
   R.levelOf(0.99).level === 1 && R.levelOf(0.96).level === 2 && R.levelOf(0.92).level === 3 && R.levelOf(0.5).level === 4);
 /* 全部词语都已知 → 轻松 */
@@ -182,6 +194,49 @@ check('全已知 → 轻松 + 可理解度 100%', s2.level === 1 && s2.coverage 
 await IR.bookStore.put(fake);
 await R.refreshBookStats(fake);
 check('统计结果缓存到书籍记录', !!(await IR.bookStore.get('bx')).stats.level);
+
+/* 10b. 词组识别（多个词一条不断的线） */
+const itemsOf = s => IR.tokenize(s).map(x => ({ t: IR.WORD_RE.test(x) ? 'w' : 'x', s: x }));
+check('词组识别：tearing down 连成一个词组',
+  IR.phraseLen(itemsOf('tearing down the wall'), 0) === 2);
+check('词组识别：三词 come up with',
+  IR.phraseLen(itemsOf('we come up with a plan'), 2) === 3);
+check('词组识别：词形还原（tearing → tear）',
+  IR.phraseLen(itemsOf('he is tearing off the cover'), 4) === 2, IR.lemmas('tearing').join('/'));
+check('词组不跨标点', IR.phraseLen(itemsOf('tearing. down'), 0) === 0);
+check('非短语动词不成组', IR.phraseLen(itemsOf('garden river stone path'), 0) === 0);
+check('普通介词搭配不成组（不在小品词表里）', IR.phraseLen(itemsOf('the summit lay within reach'), 2) === 0);
+
+/* 10c. 阅读视图：统计按【不同单词】去重，词组整组一条线 */
+R.counts = { total: 0, unknown: 0, learning: 0, known: 0 };
+R._seenKeys = new Map();
+IR.vocab.statusMap = new Map([['the', 'known']]);
+const host1 = makeEl('p');
+R._renderTokens(host1, 'the the the cat cat the');
+check('阅读统计去重：词次 6 / 已学 1（the 三次算一个）/ 生词 1（cat 两次算一个）',
+  R.counts.total === 6 && R.counts.known === 1 && R.counts.unknown === 1, JSON.stringify(R.counts));
+
+R.counts = { total: 0, unknown: 0, learning: 0, known: 0 };
+R._seenKeys = new Map();
+IR.vocab.statusMap = new Map();
+const host2 = makeEl('p');
+R._renderTokens(host2, 'tearing down the wall');
+const ph = host2.children.find(c => c.className && String(c.className).indexOf('ph') >= 0);
+check('含生词时词组包一层 .ph（组内 3 个子节点，含中间空格）',
+  !!ph && ph.children.length === 3 && ph.dataset.ph === 'tearing down',
+  ph ? ph.dataset.ph + ' / ' + ph.children.length : '没有 .ph');
+check('组内单词自身不再各自画线（.ph 内仍保留 .w 可点）',
+  !!ph && ph.children.filter(c => c.className && /(^|\s)w(\s|$)/.test(c.className)).length === 2);
+
+IR.vocab.statusMap = new Map([['tear', 'known'], ['down', 'known'], ['wall', 'known'], ['the', 'known']]);
+R.counts = { total: 0, unknown: 0, learning: 0, known: 0 };
+R._seenKeys = new Map();
+const host3 = makeEl('p');
+R._renderTokens(host3, 'tearing down the wall');
+check('词组里的词都已知 → 不包 .ph（不给已掌握的词白画线）',
+  !host3.children.some(c => c.className && String(c.className).indexOf('ph') >= 0));
+
+IR.vocab.statusMap = new Map([['the', 'known'], ['cat', 'learning']]);   /* 还原，供后续用例 */
 
 /* 11. 分组图标 */
 IR.settings.data.shelf.groups = [];

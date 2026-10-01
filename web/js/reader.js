@@ -21,6 +21,7 @@ IR.reader = {
   rendered: 0,
   mode: 'scroll',   /* scroll | page */
   counts: { total: 0, unknown: 0, learning: 0, known: 0 },
+  _seenKeys: new Map(),     /* key → status：生词/在学/已学 按不同单词去重计数 */
   articleEl: null,
 
   /* ---------- 书架状态 / 分组 / 阅读统计工具 ---------- */
@@ -229,16 +230,17 @@ IR.reader = {
     const total = tokens.length || 1;
     const coverage = (kt + lt) / total;
     const lv = this.levelOf(coverage);
-    const top = Array.from(uniq.values()).filter(e => e.status === 'unknown')
+    /* 高频词：只统计【未学 / 生词本 / 在学】，已学不再进榜；这里的 c 是词次（出现次数） */
+    const top = Array.from(uniq.values()).filter(e => e.status !== 'known')
       .sort((a, b) => b.count - a.count).slice(0, 12)
-      .map(e => ({ w: e.display, c: e.count }));
+      .map(e => ({ w: e.display, c: e.count, s: e.status }));
     return {
       tokens: tokens.length, unique: uniq.size,
       unknown: uu, learning: lu, known: ku,
       unknownTok: ut, learningTok: lt, knownTok: kt,
       coverage: Math.round(coverage * 1000) / 1000,
       level: lv.level, levelText: lv.text, tier: lv.tier, levelDesc: lv.desc,
-      topUnknown: top, at: Date.now()
+      topUnknown: top, at: Date.now(), v: 2
     };
   },
   async refreshBookStats(book) {
@@ -388,6 +390,7 @@ IR.reader = {
         <div class="bd-stat kn"><b>${s.known.toLocaleString()}</b><span>已学</span></div>
         <div class="bd-stat to"><b>${s.unique.toLocaleString()}</b><span>全书不同词</span></div>
       </div>
+      <div class="bd-stat-note">生词 / 在学 / 已学按<b>不同单词</b>计数：同一个词出现 100 次也只算 1 个</div>
       <div class="bd-diff d${s.level}">
         <b>难度：${IR.esc(s.levelText)}</b><span>${IR.esc(s.tier || '')}</span>
       </div>
@@ -399,11 +402,14 @@ IR.reader = {
       <div class="bd-cov-scale">阶梯阅读法：≥98% 自由阅读 · 95–98% i+1 理想 · 90–95% 教学挑战 · &lt;90% 挫败</div>
       ${s.topUnknown && s.topUnknown.length ? `
         <div class="bd-top">
-          <div class="bd-top-head">高频生词 Top ${s.topUnknown.length}（先攻这些，收益最大）
+          <div class="bd-top-head">高频词 Top ${s.topUnknown.length}（未学 · 生词本 · 在学，先攻这些收益最大）
             <button class="btn btn-sm" data-add-top>全部加入生词本</button>
           </div>
-          <div class="bd-chips">${s.topUnknown.map(t => `<span class="bd-chip" title="出现 ${t.c} 次">${IR.esc(t.w)}<i>×${t.c}</i></span>`).join('')}</div>
-        </div>` : '<div class="bd-top bd-top-none">这本书没有生词 —— 全在你的词库里，可以放心读。</div>'}`;
+          <div class="bd-chips">${s.topUnknown.map(t => {
+            const tag = t.s === 'learning' ? '在学' : t.s === 'new' ? '生词本' : '';
+            return `<span class="bd-chip${tag ? ' ' + t.s : ''}" title="出现 ${t.c} 次${tag ? ' · 已标为' + tag : ''}">${IR.esc(t.w)}<i>×${t.c}</i></span>`;
+          }).join('')}</div>
+        </div>` : '<div class="bd-top bd-top-none">这本书没有未学 / 在学的词了 —— 全在你的词库里，可以放心读。</div>'}`;
   },
   _renderStats(box, book, force) {
     const el = IR.$('[data-bd-stats]', box);
@@ -411,7 +417,8 @@ IR.reader = {
     const paint = s => { el.innerHTML = s ? this._statsHtml(s) : '<div class="bd-stat-empty">正在统计全书词频…</div>'; };
     if (book.stats && !force) {
       paint(book.stats);
-      if (!book.stats.topUnknown || !book.stats.topUnknown.length) { /* 老数据：重算一次 */ this._renderStats(box, book, true); }
+      /* 老版本统计（去重口径 / 高频词口径已变）：重算一次 */
+      if (book.stats.v !== 2) { this._renderStats(box, book, true); }
       return;
     }
     paint(null);
@@ -499,13 +506,13 @@ IR.reader = {
         IR.toast('已从书架删除', 'ok');
         R.initShelf();
       });
-      /* 高频生词一键加入生词本 */
+      /* 高频词一键加入生词本（已在词表里的「生词本 / 在学」不重复处理） */
       box.addEventListener('click', async e => {
         if (!e.target.closest('[data-add-top]')) return;
-        const top = (b.stats && b.stats.topUnknown) || [];
-        if (!top.length) return;
+        const top = ((b.stats && b.stats.topUnknown) || []).filter(t => !t.s || t.s === 'unknown');
+        if (!top.length) { IR.toast('这些词都已经在你的词表里了', 'ok'); return; }
         for (const t of top) await IR.vocab.mark(t.w.toLowerCase(), t.w, 'new');
-        IR.toast(`已把 ${top.length} 个高频生词加入生词本`, 'ok');
+        IR.toast(`已把 ${top.length} 个高频词加入生词本`, 'ok');
         R._renderStats(box, b, true);
       });
       R._renderStats(box, b, false);
@@ -690,6 +697,7 @@ IR.reader = {
     this.blocks = (book.blocks && book.blocks.length) ? book.blocks : (book.text || '').split(/\n{2,}/).filter(Boolean).map(t => ({ t: 'p', text: t }));
     this.rendered = 0;
     this.counts = { total: 0, unknown: 0, learning: 0, known: 0 };
+    this._seenKeys = new Map();
     this.mode = 'scroll';
     this.articleEl = IR.$('#article');
     this.articleEl.innerHTML = '';
@@ -737,26 +745,61 @@ IR.reader = {
         continue;
       }
       const el = IR.el(b.t === 'h' ? 'h3' : 'p', { class: b.t === 'h' ? 'block-heading' : '', 'data-bi': i });
-      for (const seg of IR.tokenize(b.text)) {
-        if (!IR.WORD_RE.test(seg)) { el.appendChild(document.createTextNode(seg)); continue; }
-        const { key, status } = this._wordStatus(seg);
-        this.counts.total++;
-        if (this.counts[status] != null) this.counts[status]++;
-        el.appendChild(IR.el('span', { class: 'w w-' + status, 'data-w': seg, 'data-k': key }, IR.esc(seg)));
-      }
+      this._renderTokens(el, b.text);
       frag.appendChild(el);
     }
     this.rendered = end;
     this.articleEl.appendChild(frag);
   },
 
+  /* 把一段文本渲染成词 span。
+     词组识别：连续的小品词短语（如 tearing down / come up with）整组包一层 .ph，
+     组内只画【一条不断的线】，组里每个词自身不再单独画线。
+     若组内没有任何生词，则不加包层、按普通词渲染（不给已掌握的词白画线）。 */
+  _renderTokens(el, text) {
+    const items = IR.tokenize(text).map(s => ({ t: IR.WORD_RE.test(s) ? 'w' : 'x', s }));
+    const at = i => items[i];
+    for (let i = 0; i < items.length; i++) {
+      if (at(i).t !== 'w') { el.appendChild(document.createTextNode(at(i).s)); continue; }
+      const n = IR.phraseLen(items, i);
+      if (n < 2) { el.appendChild(this._wordSpan(at(i).s).node); continue; }
+      /* 取出词组内的 n 个词与它们之间的分隔符（生成词 span 时已完成去重计数） */
+      const words = [], gaps = [];
+      for (let k = 0; k < n; k++) {
+        words.push(this._wordSpan(at(i + k * 2).s));
+        if (k) gaps.push(at(i + (k - 1) * 2 + 1).s);
+      }
+      i += n * 2 - 2;                                  /* 消费掉这组词与分隔符（循环还会 i++） */
+      if (!words.some(w => w.status === 'unknown')) {  /* 组里没生词：不画线 */
+        words.forEach((w, k) => { if (k) el.appendChild(document.createTextNode(gaps[k - 1])); el.appendChild(w.node); });
+        continue;
+      }
+      const ph = IR.el('span', { class: 'ph', 'data-ph': words.map(w => w.text).join(' ') });
+      words.forEach((w, k) => { if (k) ph.appendChild(document.createTextNode(gaps[k - 1])); ph.appendChild(w.node); });
+      el.appendChild(ph);
+    }
+  },
+  /* 生成一个词 span，并做统计：total 记为词次，生词/在学/已学 按不同单词去重 */
+  _wordSpan(seg) {
+    const { key, status } = this._wordStatus(seg);
+    this.counts.total++;
+    if (!this._seenKeys.has(key)) {
+      this._seenKeys.set(key, status);
+      if (this.counts[status] != null) this.counts[status]++;
+    }
+    const node = IR.el('span', { class: 'w w-' + status, 'data-w': seg, 'data-k': key }, IR.esc(seg));
+    return { node, status, text: seg };
+  },
+
   _updateStats() {
     const c = this.counts;
-    IR.$('#readingStats').innerHTML =
+    const el = IR.$('#readingStats');
+    el.innerHTML =
       `<span class="c-unknown">生词 ${c.unknown.toLocaleString()}</span> ·
        <span class="c-learning">在学 ${c.learning.toLocaleString()}</span> ·
        <span class="c-known">已学 ${c.known.toLocaleString()}</span> ·
-       共 ${c.total.toLocaleString()} 词`;
+       共 ${c.total.toLocaleString()} 词次`;
+    el.title = '生词 / 在学 / 已学 = 不同单词数（同一个词出现 100 次也只算 1 个）；共 = 全文词次（出现次数）';
   },
 
   _wordStatus(word) {
@@ -777,12 +820,19 @@ IR.reader = {
     });
   },
 
+  /* 重新着色后重算右侧统计：同样按【不同单词】去重 */
   _updateAfterMark() {
     const c = { total: this.counts.total, unknown: 0, learning: 0, known: 0 };
+    const seen = new Map();
     IR.$$('.article .w').forEach(sp => {
+      const k = sp.dataset.k || (sp.dataset.w || '').toLowerCase();
+      if (seen.has(k)) return;
       const st = sp.className.match(/w-(unknown|learning|known)/);
-      if (st) c[st[1]]++;
+      if (!st) return;
+      seen.set(k, st[1]);
+      c[st[1]]++;
     });
+    this._seenKeys = seen;
     this.counts = c;
     this._updateStats();
   },
@@ -883,17 +933,22 @@ IR.reader = {
     }
     art.classList.add('paged');
     art.style.position = 'relative';
-    /* 测量切页（基于 offsetTop） */
+    /* 测量切页（基于 offsetTop）；页高由窗口决定 → 窗口越大每页装得越多 */
     const pageH = this._pageHeight();
     const children = Array.from(art.children);
     const pages = [];
-    let cur = [], baseTop = -1;
-    for (const el of children) {
-      if (!cur.length) { cur.push(el); baseTop = el.offsetTop; continue; }
-      if (el.offsetTop - baseTop + el.offsetHeight > pageH) { pages.push(cur); cur = [el]; baseTop = el.offsetTop; }
-      else cur.push(el);
+    if (pageH > 20) {
+      let cur = [], baseTop = -1;
+      for (const el of children) {
+        if (!cur.length) { cur.push(el); baseTop = el.offsetTop; continue; }
+        if (el.offsetTop - baseTop + el.offsetHeight > pageH) { pages.push(cur); cur = [el]; baseTop = el.offsetTop; }
+        else cur.push(el);
+      }
+      if (cur.length) pages.push(cur);
+    } else {
+      /* 容器还没量到高度（视图隐藏 / 尺寸为 0）：先单页兜底，resize 时会重排 */
+      pages.push(children);
     }
-    if (cur.length) pages.push(cur);
     this.pages = pages;
     /* 重排为 page 容器 */
     art.innerHTML = '';
@@ -907,6 +962,19 @@ IR.reader = {
     this.pageIndex = 0;
     this._updatePageUI();
   },
+  /* 窗口尺寸变化 → 按新页高重新分页，并停在同一段文字上（窗口越大每页装得越多） */
+  _repaginate() {
+    if (this.mode !== 'page' || !this.pageEls || !this.pageEls.length) return;
+    const cur = this.pageEls[this.pageIndex];
+    const first = cur && cur.querySelector('[data-bi]');
+    const anchor = first ? +first.dataset.bi : -1;
+    this._toPageMode();
+    if (anchor >= 0 && this.pages && this.pages.length) {
+      const idx = this.pages.findIndex(page => page.some(el => +el.dataset.bi === anchor));
+      if (idx >= 0) { this.pageIndex = idx; this._showPage(); }
+    }
+  },
+
   _toScrollMode() {
     const art = this.articleEl;
     const totalPages = this.pages ? this.pages.length : 1;
@@ -1285,7 +1353,7 @@ IR.reader = {
     });
   },
 
-  /* ---------- 本篇生词清单 ---------- */
+  /* ---------- 本篇高频词清单（未学 · 生词本 · 在学；已学不计） ---------- */
   openWordList() {
     const R = this;
     const counts = new Map();
@@ -1293,29 +1361,30 @@ IR.reader = {
       if (b.t === 'img' || !b.text) continue;
       for (const seg of IR.tokenize(b.text)) {
         if (!IR.WORD_RE.test(seg)) continue;
-        const { key, status } = R._wordStatus(seg);
-        if (status !== 'unknown') continue;
-        const e = counts.get(key) || { display: seg, count: 0 };
-        e.count++;
+        const { key, status } = R.wordStatusOf(seg);   /* 保留「生词本(new)」与「在学」的区别 */
+        if (status === 'known') continue;              /* 已学不统计 */
+        const e = counts.get(key) || { display: seg, count: 0, status };
+        e.count++;                                      /* 这里统计【出现次数】，按频次排序 */
         counts.set(key, e);
       }
     }
     const list = Array.from(counts.entries()).sort((a, b) => b[1].count - a[1].count);
-    if (!list.length) return IR.toast('本文没有生词——全部都在你的词库里，太强了！', 'ok');
+    if (!list.length) return IR.toast('本文没有未学 / 在学的词了——全在你的词库里，太强了！', 'ok');
     const total = list.reduce((s, x) => s + x[1].count, 0);
     IR.modal.open(`
-      <h3>本篇生词 ${list.length} 个（共出现 ${total.toLocaleString()} 次）<button class="btn btn-sm btn-ghost modal-close" data-x>✕ 关闭</button></h3>
+      <h3>本篇高频词 ${list.length} 个（共出现 ${total.toLocaleString()} 次）<button class="btn btn-sm btn-ghost modal-close" data-x>✕ 关闭</button></h3>
       <div class="modal-body">
         <div class="settings-row" style="gap:.5rem">
           <button class="btn btn-sm" data-all="learning">全部标为在学</button>
           <button class="btn btn-sm" data-all="known">全部标为已学</button>
-          <span class="settings-note" style="margin:0">按出现频次排序 · 标记后立即重新着色</span>
+          <span class="settings-note" style="margin:0">只含未学 · 生词本 · 在学 · 按出现频次排序 · 标记后立即重新着色</span>
         </div>
         <div class="wordlist">
           ${list.slice(0, 300).map(([w, e]) => `
             <div class="wl-row" data-k="${IR.esc(w)}">
               <span class="wl-word">${IR.esc(e.display)}</span>
               <span class="wl-count">×${e.count}</span>
+              <span class="chip st-${e.status}">${IR.vocab.statusText[e.status] || '生词'}</span>
               <span class="v-ops">
                 <button class="btn btn-sm st-learning" data-op="learning">在学</button>
                 <button class="btn btn-sm st-known" data-op="known">已学</button>
@@ -1332,7 +1401,7 @@ IR.reader = {
           for (const [w] of list) R._restyleWord(w, status);
           R._updateAfterMark();
           IR.modal.close();
-          IR.toast(`已把 ${list.length} 个生词标为「${IR.vocab.statusText[status]}」`, 'ok');
+          IR.toast(`已把 ${list.length} 个词标为「${IR.vocab.statusText[status]}」`, 'ok');
           return;
         }
         const op = e.target.closest('[data-op]');
@@ -1383,12 +1452,25 @@ IR.reader = {
     }, 120), { passive: true });
     /* 关闭 / 切后台时把阅读时长与进度落库 */
     window.addEventListener('pagehide', () => { this._flushRead(); this._stopReadTimer(); });
+    /* 翻页模式：窗口尺寸变化 → 按新页高重新分页（窗口大每页内容多，始终填满整页） */
+    window.addEventListener('resize', IR.debounce(() => this._repaginate(), 180));
+    window.addEventListener('orientationchange', () => setTimeout(() => this._repaginate(), 260));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this._flushRead(); }
       else if (this.currentBook && !IR.$('#readingView').hidden) { this._readStart = Date.now(); }
     });
     IR.$$('.nav-btn').forEach(b => b.addEventListener('click', () => {
-      if (b.dataset.page !== 'reader') this.speech.stop();
+      const isReader = b.dataset.page === 'reader';
+      if (!isReader) this.speech.stop();
+      /* 目录按钮 / 翻页箭头 / 页码都是全局 fixed 元素，不会随页面切换自动隐藏，要手动收 */
+      if (!isReader) {
+        IR.$('#tocFab').hidden = true;
+        IR.$('#pageNav').hidden = true;
+        IR.$('#pageIndicator').hidden = true;
+        this.closeToc();
+      } else {
+        setTimeout(() => { this._applyTocLayout(); this._applyMode(); }, 0);
+      }
     }));
   },
 
