@@ -96,6 +96,18 @@ IR.phraseLen = (items, i) => {
   return n >= 2 ? n : 0;
 };
 
+/* 组合式词组识别（阅读渲染用）：
+   ① 数据驱动 —— 查词典常用词组索引 IR.phrases（ECDICT 多词条目，2 万+ 条，可脚本重建）；
+   ② 启发式兜底 —— 索引未就绪 / 未收录时，用上面的短语动词规则。
+   取两者中最长的匹配。返回 { n: 单词数, base: 词组基形, meaning: 中文 } 或 null。 */
+IR.phraseMatch = (items, i) => {
+  const db = (IR.phrases && typeof IR.phrases.match === 'function') ? IR.phrases.match(items, i) : null;
+  const hn = IR.phraseLen(items, i);
+  if (db && db.n >= 2 && db.n >= hn) return db;
+  if (hn >= 2) return { n: hn, base: null, meaning: '' };
+  return null;
+};
+
 /* ---------- 词形还原（启发式，M3 接入 ECDICT 词干库后升级） ----------
    返回候选词数组：原词在前，逐步剥离后缀的变体在后。
    阅读着色时按顺序在词库里查找第一个命中的候选。 */

@@ -35,6 +35,7 @@ globalThis.document = {
   addEventListener() {}, dispatchEvent() {},
   createElement: t => makeEl(t),
   createTextNode: t => ({ nodeType: 3, textContent: String(t), nodeValue: String(t) }),
+  createDocumentFragment: () => { const f = makeEl('fragment'); f.nodeType = 11; return f; },
   querySelector: sel => (store[sel] = store[sel] || makeEl()),
   querySelectorAll: () => []
 };
@@ -43,6 +44,7 @@ globalThis.confirm = () => true;
 globalThis.addEventListener = () => {};
 
 new Function('window', readFileSync(path.join(ROOT, 'js/util.js'), 'utf8'))(globalThis);
+new Function('window', readFileSync(path.join(ROOT, 'js/phrases.js'), 'utf8'))(globalThis);
 new Function('window', readFileSync(path.join(ROOT, 'js/reader.js'), 'utf8'))(globalThis);
 const IR = globalThis.IR;
 const R = IR.reader;
@@ -309,6 +311,88 @@ check('可选图标列表含"无图标"项', R.GROUP_ICONS[0] === '' && R.GROUP_
   check('生词本词条按生词样式（w-unknown）', R._wordStatus('running').status === 'unknown' && R._wordStatus('running').key === 'run');
   IR.vocab.statusMap.set('run', 'learning');
   check('在学词条样式 w-learning', R._wordStatus('running').status === 'learning');
+}
+
+/* 13. 四宫格分组卡：不管几本书都占满 2×2（不足补空位） */
+{
+  const g = { id: 'gf', name: '奇幻' };
+  const two = R._folderCellHtml(g, [{ id: 'b1', title: 'A' }, { id: 'b2', title: 'B' }]);
+  check('两本书的分组卡仍是四宫格（补 2 个空位）',
+    (two.match(/folder-tile/g) || []).length === 4 && (two.match(/folder-tile empty/g) || []).length === 2,
+    'tiles=' + (two.match(/folder-tile/g) || []).length);
+  const five = R._folderCellHtml(g, [{ id: '1', title: 'a' }, { id: '2', title: 'b' }, { id: '3', title: 'c' }, { id: '4', title: 'd' }, { id: '5', title: 'e' }]);
+  check('五本书只取前 4 本，不出现空位',
+    (five.match(/folder-tile/g) || []).length === 4 && (five.match(/folder-tile empty/g) || []).length === 0);
+  const one = R._folderCellHtml(g, [{ id: 'b1', title: 'A' }]);
+  check('一本书的分组卡也是四宫格（补 3 个空位）',
+    (one.match(/folder-tile empty/g) || []).length === 3);
+}
+
+/* 14. 数据驱动词组识别：词典索引优先，启发式兜底 */
+{
+  const itemsOf2 = s => IR.tokenize(s).map(x => ({ t: IR.WORD_RE.test(x) ? 'w' : 'x', s: x }));
+  check('词组索引未加载时不误报（in spite of 认不出来 → null）',
+    IR.phrases.isLoaded() === false && IR.phraseMatch(itemsOf2('in spite of the rain'), 0) === null,
+    'got=' + JSON.stringify(IR.phraseMatch(itemsOf2('in spite of the rain'), 0)));
+  IR.phrases._set({ 'tear down': '扯下, 拆卸, 逐条驳斥', 'come up with': '赶上, 提出', 'in spite of': '不管' });
+  check('词组索引已加载', IR.phrases.isLoaded() === true);
+  check('索引：最长匹配（come up with 不吃成 come up）',
+    IR.phrases.match(itemsOf2('we come up with a plan'), 2).n === 3);
+  check('索引：词形还原（tearing down → tear down）',
+    IR.phrases.match(itemsOf2('tearing down the wall'), 0).base === 'tear down');
+  check('索引：不跨标点', IR.phrases.match(itemsOf2('tearing. down'), 0) === null);
+  check('索引：取到离线释义', IR.phrases.get('tear down') === '扯下, 拆卸, 逐条驳斥');
+  check('IR.phraseMatch：词典命中优先于启发式（in spite of 非短语动词）',
+    IR.phraseMatch(itemsOf2('in spite of the rain'), 0).n === 3);
+  check('IR.phraseMatch：词典命中时带 base',
+    IR.phraseMatch(itemsOf2('tearing down the wall'), 0).base === 'tear down');
+
+  /* 渲染：词组包层带基形 data-phk（点词组翻译要用） */
+  IR.vocab.statusMap = new Map();
+  R.counts = { total: 0, unknown: 0, learning: 0, known: 0 };
+  R._seenKeys = new Map();
+  const host = makeEl('p');
+  R._renderTokens(host, 'tearing down the wall');
+  const ph = host.children.find(c => c.className && String(c.className).indexOf('ph') >= 0);
+  check('词组包层带基形 data-phk', !!ph && ph.dataset.phk === 'tear down' && ph.dataset.ph === 'tearing down',
+    ph ? ph.dataset.ph + ' / ' + ph.dataset.phk : '没有 .ph');
+
+  /* 索引清空 → 退回启发式（短语动词规则） */
+  IR.phrases._reset();
+  check('IR.phraseMatch：无索引时退回启发式，base 为空',
+    IR.phraseMatch(itemsOf2('tearing down the wall'), 0).n === 2 &&
+    IR.phraseMatch(itemsOf2('tearing down the wall'), 0).base === null);
+  IR.phrases._set({ 'tear down': '扯下, 拆卸, 逐条驳斥' });
+}
+
+/* 15. 词组翻译优先离线词组库；段落翻译带缓存、译文按句分行 */
+{
+  IR.vocab.statusMap = new Map();
+  IR.settings.data.reader = {};
+  let transCalls = 0;
+  IR.translate = { run: async () => { transCalls++; return { engine: '测试引擎', text: '第一句。\n第二句。' }; } };
+  const r1 = await R._translateWord('tear down');
+  check('词组翻译优先离线词组库（不消耗接口）',
+    r1.engine === '词组库' && r1.text.indexOf('扯下') >= 0 && transCalls === 0, JSON.stringify(r1));
+
+  R._paraTrans = new Map();
+  const p1 = await R._translateParagraph('Hello there. How are you?');
+  const p2 = await R._translateParagraph('Hello there. How are you?');
+  check('段落翻译有缓存（同一段只调一次接口）', transCalls === 1 && p1.text === p2.text, 'calls=' + transCalls);
+  const html = R._sentHtml(p1.text);
+  check('段落译文按句分行（每个译句一行）', (html.match(/pt-line/g) || []).length === 2, html);
+
+  /* 每段末尾都有「译」按钮（标题不加） */
+  IR.vocab.statusMap = new Map([['the', 'known'], ['cat', 'known']]);
+  R.blocks = [{ t: 'p', text: 'The cat sat.' }, { t: 'h', text: 'Chapter Two' }, { t: 'p', text: 'A second one.' }];
+  R.rendered = 0; R.counts = { total: 0, unknown: 0, learning: 0, known: 0 }; R._seenKeys = new Map();
+  R.articleEl = makeEl('article');
+  R._appendBlocks();
+  const frag = R.articleEl.children[0];
+  const hasTr = el => el.children.some(c => c.className === 'para-tr');
+  check('每个段落末尾都有「译」按钮，标题没有',
+    hasTr(frag.children[0]) && !hasTr(frag.children[1]) && hasTr(frag.children[2]) &&
+    frag.children[0].children[frag.children[0].children.length - 1].dataset.tb === '0');
 }
 
 console.log(results.join('\n'));

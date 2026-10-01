@@ -16,9 +16,14 @@ InkRead.log
 web/tests/edge-prof-*/
 web/tests/*.txt
 web/tests/v-*.png
+web/tests/_*.mjs
 web/tools/__pycache__/
 **/__pycache__/
 tools/store-test/
+
+# ---------- 词典 / 词组数据源缓存（可脚本重新下载，不入库） ----------
+web/tools/cache/
+web/tools/_analyze_phrases*.py
 
 # ---------- 编辑器 / IDE ----------
 .vs/

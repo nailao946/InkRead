@@ -320,6 +320,27 @@ input[type="range"] { accent-color: var(--accent); }
 .article .ph .w-learning,
 .article .ph .w-known { text-decoration: none; }
 
+/* ---------- 段落翻译（每段末尾的「译」） ---------- */
+.para-tr {
+  margin-left: .35em; padding: 0 .36em; vertical-align: .06em;
+  font-size: .72rem; line-height: 1.5; font-family: "Segoe UI", sans-serif;
+  color: var(--text-3); background: transparent;
+  border: 1px solid var(--border-soft); border-radius: 4px; cursor: pointer;
+  opacity: .5; transition: opacity .15s, color .15s, border-color .15s;
+}
+.article p:hover .para-tr { opacity: 1; }        /* 鼠标进段落才显眼，平时不打扰阅读 */
+.para-tr:hover, .para-tr.on { color: var(--accent-2); border-color: var(--accent-2); opacity: 1; }
+.para-trans {
+  display: block; margin: .5rem 0 .2rem; padding: .5rem .7rem;
+  font-size: .88rem; line-height: 1.75; color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0;
+  text-align: left; font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.para-trans .pt-line { display: block; }         /* 译文按句分行 */
+.para-trans .pt-src { display: block; font-size: .68rem; color: var(--text-3); margin-bottom: .25rem; }
+.para-trans .pt-note { font-size: .78rem; color: var(--text-3); }
+
 /* ---------- 点词弹窗 ---------- */
 .word-popup {
   position: fixed; z-index: 200; width: 300px; max-width: calc(100vw - 24px);
@@ -340,6 +361,19 @@ input[type="range"] { accent-color: var(--accent); }
 .wp-trans-note { font-size: .78rem; color: var(--text-3); }
 .wp-actions { display: flex; gap: .45rem; flex-wrap: wrap; border-top: 1px solid var(--border-soft); padding-top: .7rem; }
 .wp-actions .btn { padding: .32rem .6rem; font-size: .8rem; }
+/* 词组弹窗（点词组 → 整组翻译） */
+.wp-word-ph { font-size: .98rem; line-height: 1.35; word-break: break-word; }
+.wp-split {
+  display: flex; align-items: center; gap: .25rem; flex-wrap: wrap;
+  font-size: .74rem; color: var(--text-3); margin: -.15rem 0 .6rem;
+}
+.wp-chip {
+  font-family: "Segoe UI", sans-serif; font-size: .78rem; color: var(--text-2);
+  background: var(--bg-hover); border: 1px solid var(--border-soft); border-radius: 4px;
+  padding: .1rem .34rem; cursor: pointer;
+}
+.wp-chip:hover { color: var(--accent-2); border-color: var(--accent-2); }
+.wp-chip-sep { color: var(--text-3); }
 .wp-speak { border-color: var(--accent); color: var(--accent); }
 .wp-close {
   position: absolute; top: .5rem; right: .6rem; border: none; background: none;
@@ -887,6 +921,8 @@ body.toc-open .toc-panel { transform: translateX(0); }
   font-size: 1.1rem; font-weight: 600; color: var(--text-2);
   background: var(--bg-hover); border-radius: 4px;
 }
+/* 四宫格空位：只占格、不抢眼（组内不足 4 本时补位，保证始终是 2×2） */
+.folder-tile.empty { background: transparent; border: 1px dashed var(--border-soft); opacity: .55; }
 .folder-emoji {
   position: absolute; left: 6px; top: 6px; font-size: .95rem;
   background: var(--bg-panel); border: 1px solid var(--border-soft);

@@ -28,7 +28,7 @@ check('引用资源全部 200 且 MIME 正确', bad.length === 0, bad.join(' ; '
 
 /* 2. 关键脚本都存在（含本轮新增） */
 const need = ['js/util.js', 'js/storage.js', 'js/dict.js', 'js/themes.js', 'js/importers.js',
-  'js/translate.js', 'js/vocab.js', 'js/filestore.js', 'js/reader.js', 'js/settings.js',
+  'js/translate.js', 'js/vocab.js', 'js/filestore.js', 'js/phrases.js', 'js/reader.js', 'js/settings.js',
   'js/app.js', 'js/desktop-bridge.js', 'sw.js', 'manifest.json'];
 const missing = [];
 for (const f of need) {
@@ -105,6 +105,43 @@ check('申请 Key 帮助文案不再用深蓝（走主题副色 --accent-2）',
   /\.api-help-body a \{[\s\S]{0,200}var\(--accent-2\)/.test(css) &&
   /\.api-help-body code \{[\s\S]{0,160}var\(--accent-2\)/.test(css) &&
   css.indexOf('--bg-sunken') < 0);
+
+/* 6c. 第 7 轮改动：四宫格文件夹卡 / 模式与进度记忆 / 数据驱动词组 / 词组翻译 / 段落翻译 */
+const phrasesSrc = readFileSync(path.join(ROOT, 'js/phrases.js'), 'utf8');
+check('分组文件夹卡固定 2×2 四宫格（不足补空位）',
+  /while \(slots\.length < 4\)/.test(readerSrc) && /\.folder-tile\.empty \{/.test(css));
+check('阅读模式可记忆（book.mode / _applyMode 走记忆值）',
+  readerSrc.indexOf("book.mode === 'page'") >= 0 && readerSrc.indexOf('currentBook.mode = this.mode') >= 0);
+check('阅读进度可记忆（段落锚点 bi + 百分比兜底）',
+  readerSrc.indexOf('_restoreScroll') >= 0 && readerSrc.indexOf('_gotoBi') >= 0 &&
+  readerSrc.indexOf('_topBi') >= 0 && readerSrc.indexOf('currentBook.bi = bi') >= 0);
+check('词组识别数据驱动：词典词组索引 js/phrases.js',
+  html.indexOf('js/phrases.js') >= 0 &&
+  phrasesSrc.indexOf('IR.phrases') >= 0 &&
+  phrasesSrc.indexOf('function match') >= 0 && phrasesSrc.indexOf('function get') >= 0);
+check('词组识别：词典索引优先 + 启发式兜底（IR.phraseMatch）',
+  utilSrc.indexOf('IR.phraseMatch') >= 0 && /IR\.phrases\.match\(items, i\)/.test(utilSrc) &&
+  readerSrc.indexOf('IR.phraseMatch(items, i)') >= 0);
+check('词组带基形（data-phk），点词组直接翻译整组',
+  /'data-phk': base/.test(readerSrc) && readerSrc.indexOf('_openPhrasePopup') >= 0 &&
+  /IR\.phrases\.get\(k\)/.test(readerSrc));
+check('每段末尾有「译」按钮 + 段落翻译句行显示',
+  readerSrc.indexOf("class: 'para-tr'") >= 0 && readerSrc.indexOf('toggleParaTrans') >= 0 &&
+  readerSrc.indexOf('_translateParagraph') >= 0 && readerSrc.indexOf('_sentHtml') >= 0 &&
+  /\.para-trans \{/.test(css) && /\.para-trans \.pt-line \{ display: block/.test(css));
+check('Service Worker 预缓存词组索引并已升版',
+  /CACHE_VERSION = 'inkread-v\d+'/.test(readFileSync(path.join(ROOT, 'sw.js'), 'utf8')) &&
+  readFileSync(path.join(ROOT, 'sw.js'), 'utf8').indexOf('./js/phrases.js') >= 0);
+/* 词组数据本体（dict/phrases.js）：可加载、有量、含经典词组 */
+try {
+  const r = await fetch(BASE + '/dict/phrases.js');
+  const txt = await r.text();
+  const obj = JSON.parse(txt.replace(/^window\.IR_PHRASES=/, '').replace(/;\s*$/, ''));
+  const n = Object.keys(obj).length;
+  check('词组数据可用（2 万+ 条，含 tear down / in spite of）',
+    r.ok && n > 20000 && obj['tear down'] && obj['in spite of'],
+    'n=' + n + ' tear down=' + obj['tear down']);
+} catch (e) { check('词组数据可用（2 万+ 条，含 tear down / in spite of）', false, e.message); }
 
 /* 7. 设置页挂载冒烟：settings.js 的 mount() 必须不抛错且关键结构齐全
    （防回归：曾在真机报 "extra is not defined" 而测试全绿——本节补上这层覆盖） */

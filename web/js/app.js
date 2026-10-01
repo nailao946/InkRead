@@ -35,6 +35,8 @@ window.IR = window.IR || {};
   IR.applyTheme(IR.settings.data.theme);
 
   mark('5');
+  /* 词组索引预热（数据驱动词组识别）：后台先加载，读第一本书时通常已就绪 */
+  if (IR.phrases && IR.phrases.ensure) IR.phrases.ensure().catch(() => {});
   IR.vocab.mount(IR.$('#vocabMount'));
   IR.vocab.mount(IR.$('#studyMount'), { fixed: 'new' });
   IR.settingsPage.mount(IR.$('#settingsMount'));

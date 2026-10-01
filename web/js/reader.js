@@ -251,11 +251,14 @@ IR.reader = {
   },
 
   /* ---------- 书架 ---------- */
-  /* 分组文件夹卡（手机桌面式）：占一个书卡位，封面区 2×2 预览组内前几本，点开进入分组 */
+  /* 分组文件夹卡（手机桌面式）：占一个书卡位，封面区固定 2×2 四宫格，点开进入分组。
+     无论组内几本书都占满四格——不足 4 本的空位留白（这样两本书也是四宫格，不会缩成一格）。 */
   _folderCellHtml(g, books) {
-    const previews = books.slice(0, 4).map(b => b.cover
+    const slots = books.slice(0, 4).map(b => b.cover
       ? `<img src="${b.cover}" alt="">`
-      : `<span class="folder-tile">${IR.esc((b.title || '?').slice(0, 1))}</span>`).join('');
+      : `<span class="folder-tile">${IR.esc((b.title || '?').slice(0, 1))}</span>`);
+    while (slots.length < 4) slots.push('<span class="folder-tile empty"></span>');
+    const previews = slots.join('');
     const avg = books.length ? Math.round(books.reduce((s, b) => s + (b.progress || 0), 0) / books.length * 100) : 0;
     const st = !books.length ? 'unread'
       : books.some(b => this.readStateOf(b) === 'reading') ? 'reading'
@@ -698,22 +701,26 @@ IR.reader = {
     this.rendered = 0;
     this.counts = { total: 0, unknown: 0, learning: 0, known: 0 };
     this._seenKeys = new Map();
-    this.mode = 'scroll';
+    /* 记忆上次的阅读模式：上次用翻页模式，这次进来还是翻页模式 */
+    this.mode = book.mode === 'page' ? 'page' : 'scroll';
     this.articleEl = IR.$('#article');
     this.articleEl.innerHTML = '';
     this.pageEls = null;
     this.pages = [];
-    this._applyMode();
     IR.$('#shelfView').hidden = true;
     IR.$('#readingView').hidden = false;
     IR.$('#tocPanel').hidden = true;
     IR.$('#readingTitle').textContent = book.title;
     this._renderToc();
+    /* 词组索引（数据驱动词组识别）：先就位再渲染，保证全文词组线一致；失败则退回启发式 */
+    if (IR.phrases && IR.phrases.ensure) { try { await IR.phrases.ensure(); } catch (e) { /* 静默降级 */ } }
+    this._applyMode();
     this._appendBlocks();
     this._updateStats();
+    /* 记忆上次读到哪儿：优先按段落号精确定位，老数据退回百分比 */
+    if (this.mode === 'page') { this._toPageMode(); this._gotoBi(book.bi); }
+    else this._restoreScroll(book);
     this._updateProgress();
-    if (book.progress && this.mode === 'scroll') requestAnimationFrame(() => window.scrollTo(0, (document.body.scrollHeight - innerHeight) * book.progress));
-    else window.scrollTo(0, 0);
     if (!this._io) {
       this._io = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting && this.rendered < this.blocks.length) {
@@ -727,6 +734,44 @@ IR.reader = {
 
   _ensureRendered(idx) {
     while (this.rendered <= idx && this.rendered < this.blocks.length) this._appendBlocks();
+  },
+
+  /* ---------- 阅读进度记忆 ---------- */
+  /* 滚动模式：回到上次读到的段落（用段落号精确定位；无段落号的老数据用百分比兜底） */
+  _restoreScroll(book) {
+    const bi = (typeof book.bi === 'number' && book.bi >= 0) ? book.bi : -1;
+    const place = () => {
+      if (bi >= 0) {
+        this._ensureRendered(bi);
+        const el = this.articleEl.querySelector(`[data-bi="${bi}"]`);
+        if (el) { window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + scrollY - 6)); return true; }
+      }
+      if (book.progress) {
+        window.scrollTo(0, Math.max(0, (document.body.scrollHeight - innerHeight) * book.progress));
+        return true;
+      }
+      window.scrollTo(0, 0);
+      return false;
+    };
+    /* 首帧定位后再校准一帧：字体 / 图片可能改变文档高度 */
+    requestAnimationFrame(() => { if (!place()) requestAnimationFrame(place); });
+  },
+  /* 翻页模式：跳到包含某段的那一页 */
+  _gotoBi(bi) {
+    if (typeof bi !== 'number' || bi < 0 || !this.pages || !this.pages.length) return;
+    const idx = this.pages.findIndex(page => page.some(el => +el.dataset.bi === bi));
+    if (idx >= 0) { this.pageIndex = idx; this._showPage(); }
+  },
+  /* 当前视口顶部所在的段落号（滚动进度的精确定位锚点） */
+  _topBi() {
+    const els = this.articleEl.querySelectorAll('[data-bi]');
+    if (!els.length) return -1;
+    let lo = 0, hi = els.length - 1, ans = 0;
+    while (lo <= hi) {                       /* 段落按文档序排列，可二分 */
+      const mid = (lo + hi) >> 1;
+      if (els[mid].getBoundingClientRect().bottom > 90) { ans = mid; hi = mid - 1; } else lo = mid + 1;
+    }
+    return +els[ans].dataset.bi;
   },
 
   _appendBlocks() {
@@ -744,8 +789,13 @@ IR.reader = {
         }
         continue;
       }
-      const el = IR.el(b.t === 'h' ? 'h3' : 'p', { class: b.t === 'h' ? 'block-heading' : '', 'data-bi': i });
+      const isP = b.t !== 'h';
+      const el = IR.el(isP ? 'p' : 'h3', { class: isP ? '' : 'block-heading', 'data-bi': i });
       this._renderTokens(el, b.text);
+      /* 段落末尾（句号结束处）挂一个「译」：一键翻译本段 */
+      if (isP && b.text) {
+        el.appendChild(IR.el('button', { class: 'para-tr', type: 'button', 'data-tb': i, title: '翻译本段' }, '译'));
+      }
       frag.appendChild(el);
     }
     this.rendered = end;
@@ -761,8 +811,12 @@ IR.reader = {
     const at = i => items[i];
     for (let i = 0; i < items.length; i++) {
       if (at(i).t !== 'w') { el.appendChild(document.createTextNode(at(i).s)); continue; }
-      const n = IR.phraseLen(items, i);
-      if (n < 2) { el.appendChild(this._wordSpan(at(i).s).node); continue; }
+      /* 词组识别：词典常用词组索引优先（数据驱动），短语动词启发式兜底 */
+      const m = (typeof IR.phraseMatch === 'function')
+        ? IR.phraseMatch(items, i)
+        : (IR.phraseLen(items, i) >= 2 ? { n: IR.phraseLen(items, i), base: null, meaning: '' } : null);
+      if (!m || m.n < 2) { el.appendChild(this._wordSpan(at(i).s).node); continue; }
+      const n = m.n;
       /* 取出词组内的 n 个词与它们之间的分隔符（生成词 span 时已完成去重计数） */
       const words = [], gaps = [];
       for (let k = 0; k < n; k++) {
@@ -774,7 +828,10 @@ IR.reader = {
         words.forEach((w, k) => { if (k) el.appendChild(document.createTextNode(gaps[k - 1])); el.appendChild(w.node); });
         continue;
       }
-      const ph = IR.el('span', { class: 'ph', 'data-ph': words.map(w => w.text).join(' ') });
+      const surface = words.map(w => w.text).join(' ');
+      const base = m.base || words.map(w => w.text.toLowerCase()).join(' ');
+      /* data-ph 记原文（显示用），data-phk 记词典基形（查词组释义用） */
+      const ph = IR.el('span', { class: 'ph', 'data-ph': surface, 'data-phk': base });
       words.forEach((w, k) => { if (k) ph.appendChild(document.createTextNode(gaps[k - 1])); ph.appendChild(w.node); });
       el.appendChild(ph);
     }
@@ -915,6 +972,18 @@ IR.reader = {
     if (this.mode === 'scroll') { this.mode = 'page'; this._toPageMode(); }
     else { this.mode = 'scroll'; this._toScrollMode(); }
     this._applyMode();
+    /* 模式本身也要记住：下次打开这本书直接沿用这次选定的模式 */
+    if (this.currentBook) {
+      this.currentBook.mode = this.mode;
+      if (this.mode === 'page') {
+        const cur = this.pageEls && this.pageEls[this.pageIndex];
+        const first = cur && cur.querySelector('[data-bi]');
+        if (first) this.currentBook.bi = +first.dataset.bi;
+      } else {
+        setTimeout(() => { const bi = this._topBi(); if (bi >= 0) this.currentBook.bi = bi; this._saveProgressSoon(); }, 100);
+      }
+      this._saveProgressSoon();
+    }
   },
   _pageHeight() {
     const art = this.articleEl;
@@ -997,9 +1066,13 @@ IR.reader = {
     this.pageEls.forEach((pg, i) => { pg.hidden = i !== this.pageIndex; });
     this._updatePageUI();
     this._updateProgress();
-    /* 存进度（按页）：内存即时更新，落库节流 3 秒 */
+    /* 存进度（按页 + 当前页首段）：内存即时更新，落库节流 3 秒 */
     if (this.currentBook) {
       this.currentBook.progress = this.pageEls.length > 1 ? this.pageIndex / (this.pageEls.length - 1) : 0;
+      this.currentBook.mode = 'page';
+      const cur = this.pageEls[this.pageIndex];
+      const first = cur && cur.querySelector('[data-bi]');
+      if (first) this.currentBook.bi = +first.dataset.bi;
       this._saveProgressSoon();
     }
   },
@@ -1008,10 +1081,53 @@ IR.reader = {
   },
   nextPage() { if (this.mode === 'page' && this.pageEls && this.pageIndex < this.pageEls.length - 1) { this.pageIndex++; this._showPage(); } },
   prevPage() { if (this.mode === 'page' && this.pageIndex > 0) { this.pageIndex--; this._showPage(); } },
+  /* ---------- 段落翻译（每段末尾的「译」） ---------- */
+  _paraTrans: new Map(),                 /* 段落文本 → { engine, text }：本会话内不重复调接口 */
+  async _translateParagraph(text) {
+    const k = text.slice(0, 512);
+    const hit = this._paraTrans.get(k);
+    if (hit) return hit;
+    const r = await IR.translate.run(text);
+    if (this._paraTrans.size > 120) this._paraTrans.clear();
+    this._paraTrans.set(k, r);
+    return r;
+  },
+  /* 译文按句分行：译文里的换行都当作断句，一行一句读起来更清楚 */
+  _sentHtml(t) {
+    const lines = String(t == null ? '' : t).split(/\n+/).map(s => s.trim()).filter(Boolean);
+    if (lines.length <= 1) return IR.escLines(t);
+    return lines.map(s => `<span class="pt-line">${IR.esc(s)}</span>`).join('');
+  },
+  async toggleParaTrans(bi, btn) {
+    const p = (btn.closest && btn.closest('[data-bi]')) || btn.parentElement;
+    if (!p) return;
+    let box = p.querySelector('.para-trans');
+    if (box) {                                        /* 已译过：展开 / 收起 */
+      box.hidden = !box.hidden;
+      btn.classList.toggle('on', !box.hidden);
+      if (this.mode === 'page') this._repaginate();
+      return;
+    }
+    box = IR.el('span', { class: 'para-trans' }, '<span class="pt-note">翻译中…</span>');
+    p.appendChild(box);
+    btn.classList.add('on');
+    const text = ((this.blocks[bi] || {}).text || '').trim();
+    if (!text) { box.innerHTML = '<span class="pt-note">本段没有可翻译的文本</span>'; return; }
+    try {
+      const r = await this._translateParagraph(text);
+      box.innerHTML = `<span class="pt-src">${IR.esc(r.engine)}</span>${this._sentHtml(r.text)}`;
+    } catch (err) {
+      box.innerHTML = `<span class="pt-note" style="color:var(--danger)">${IR.esc(err.message)}</span>`;
+    }
+    if (this.mode === 'page') this._repaginate();     /* 段落变高 → 翻页模式重新分页，别撑破页面 */
+  },
   bindPageNav() {
     this.articleEl = IR.$('#article');
-    /* 点击左右 30% 区域翻页（不点单词） */
+    /* 段落「译」按钮：优先处理，且不触发翻页 */
     this.articleEl.addEventListener('click', e => {
+      const pt = e.target.closest('.para-tr');
+      if (pt) { e.stopPropagation(); this.toggleParaTrans(+pt.dataset.tb, pt); return; }
+      if (e.target.closest('.para-trans')) return;
       if (this.mode !== 'page') return;
       if (e.target.closest('.w') || e.target.closest('.word-popup') || e.target.closest('.block-figure img')) return;
       const rect = this.articleEl.getBoundingClientRect();
@@ -1043,27 +1159,36 @@ IR.reader = {
     document.addEventListener('click', e => {
       const sel = window.getSelection();
       const selLen = sel ? sel.toString().trim().length : 0;
-      const w = e.target.closest('.w');
-      if (w && !IR.$('#readingView').hidden && selLen <= 1 && !e.target.closest('#selTransBtn')) {
-        this._openPopup(w, popup);
-        return;
+      const inPopup = e.target.closest('.word-popup');
+      if (selLen <= 1 && !inPopup && !e.target.closest('#selTransBtn') && !IR.$('#readingView').hidden) {
+        /* 词组优先：点词组里任一个词 → 直接给整组翻译（不是单词） */
+        const ph = e.target.closest('.ph');
+        if (ph) { this._openPhrasePopup(ph, popup); return; }
+        const w = e.target.closest('.w');
+        if (w) { this._openPopup(w, popup); return; }
       }
-      if (!e.target.closest('.word-popup') && !e.target.closest('#selTransBtn')) this._closePopup(popup);
+      if (!inPopup && !e.target.closest('#selTransBtn')) this._closePopup(popup);
     });
     popup.addEventListener('click', async e => {
       const op = e.target.closest('[data-op]');
       if (!op) return;
       const word = popup.dataset.w, key = popup.dataset.k, display = popup.dataset.d;
       const action = op.dataset.op;
-      if (action === 'speak') return IR.tts.speak(word);
-      if (action === 'cam') return this.dict.open(word);
+      const isPhrase = popup.dataset.mode === 'ph';
+      if (action === 'speak') return IR.tts.speak(display || word);
+      if (action === 'cam') return this.dict.open(isPhrase ? String(key || '').replace(/\s+/g, '-') : word);
       if (action === 'close') return this._closePopup(popup);
+      if (action === 'w') {                                  /* 词组弹窗里的「分开看」：转成单词弹窗 */
+        const node = (this._phWords || [])[+op.dataset.idx];
+        if (node) this._openPopup(node, popup);
+        return;
+      }
       if (action === 'trans') {
         const box = IR.$('[data-trans]', popup);
         box.hidden = false;
         box.innerHTML = '<span class="wp-trans-note">翻译中…</span>';
         try {
-          const r = await this._translateWord(word);
+          const r = await this._translateWord(isPhrase ? key : word);
           box.innerHTML = `<b>${IR.esc(r.engine)}</b>：` + IR.escLines(r.text);
           this._persistMeaning(popup, r.text);          /* 译文回存词表，下次点词不再消耗接口 */
         } catch (err) { box.innerHTML = `<span style="color:var(--danger)">${IR.esc(err.message)}</span>`; }
@@ -1109,6 +1234,7 @@ IR.reader = {
         <button class="btn btn-sm btn-ghost" data-op="trans">翻译</button>
         <button class="btn btn-sm btn-ghost" data-op="cam">剑桥词典</button>
       </div>`;
+    popup.dataset.mode = 'word';
     popup.dataset.w = word;
     popup.dataset.k = key;
     popup.dataset.d = word;
@@ -1149,6 +1275,56 @@ IR.reader = {
     if (!(entry && entry.meaning)) this._autoTranslate(popup, word);
   },
 
+  /* 词组弹窗：点词组 → 直接给整组中文（优先离线词组库，其次在线翻译词组本身）。
+     组内单词不单独标记（词组作为一个整体翻译），但给「分开看」入口可切到单词弹窗。 */
+  _openPhrasePopup(ph, popup) {
+    const surface = ph.dataset.ph || '';
+    const base = (ph.dataset.phk || surface).toLowerCase();
+    if (!surface) return;
+    const offMeaning = (IR.phrases && typeof IR.phrases.get === 'function') ? IR.phrases.get(base) : '';
+    const kids = Array.from(ph.children).filter(c => c.classList && c.classList.contains('w'));
+    this._phWords = kids;
+    const chips = kids.map((k, idx) =>
+      `<button class="wp-chip" data-op="w" data-idx="${idx}">${IR.esc(k.dataset.w || '')}</button>`).join('<span class="wp-chip-sep">·</span>');
+    popup.innerHTML = `
+      <button class="wp-close" data-op="close">✕</button>
+      <div class="wp-head">
+        <span class="wp-word wp-word-ph" style="color:var(--w-unknown)">${IR.esc(surface)}</span>
+        <span class="wp-status">词组${base !== surface.toLowerCase() ? ' · ' + IR.esc(base) : ''}</span>
+      </div>
+      <div class="wp-phon">
+        <button class="btn btn-sm wp-speak" data-op="speak" style="margin-right:.4rem">
+          <svg class="speaker-icon" viewBox="0 0 13 11" xmlns="http://www.w3.org/2000/svg"><path d="M0 3.5h2L5 .8v9.4L2 7.5H0z" fill="currentColor"/><path d="M7 2.8a3 3 0 0 1 0 5.4M8.8 1.2a5 5 0 0 1 0 8.6" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+          整组发音
+        </button>
+        <span>本地 TTS</span>
+      </div>
+      <div class="wp-meaning" data-res>${offMeaning ? IR.escLines(offMeaning) : '<span class="wp-dict-note">正在翻译词组…</span>'}</div>
+      <div class="wp-trans" data-trans hidden></div>
+      <div class="wp-split">分开看：${chips || '<span class="wp-dict-note">—</span>'}</div>
+      <div class="wp-actions">
+        <button class="btn btn-sm btn-ghost" data-op="trans">翻译词组</button>
+        <button class="btn btn-sm btn-ghost" data-op="cam">剑桥词典</button>
+      </div>`;
+    popup.dataset.mode = 'ph';
+    popup.dataset.w = surface;
+    popup.dataset.k = base;
+    popup.dataset.d = surface;
+    popup.dataset.m = offMeaning || '';
+    popup.hidden = false;
+    const r = ph.getBoundingClientRect();
+    const pw = popup.offsetWidth, pp = popup.offsetHeight;
+    let x = r.left + r.width / 2 - pw / 2;
+    x = Math.max(8, Math.min(x, innerWidth - pw - 8));
+    let y = r.bottom + 8;
+    if (y + pp > innerHeight - 8) y = Math.max(8, r.top - pp - 8);
+    popup.style.left = x + 'px';
+    popup.style.top = y + 'px';
+    if (IR.settings.data.tts.autoSpeak !== false) IR.tts.speak(surface);
+    /* 离线词组库没收录 → 在线翻译整组 */
+    if (!offMeaning) this._autoTranslate(popup, surface, base);
+  },
+
   /* 释义回填：当前弹窗记一份（标记时随词入库），词表只在空时补写 */
   _persistMeaning(popup, text) {
     const t = String(text || '').trim();
@@ -1162,7 +1338,10 @@ IR.reader = {
   _transCache: new Map(),
   async _translateWord(word) {
     const k = (word || '').toLowerCase();
-    /* 先查词表（含词形还原：running → run），已有释义就不再调翻译接口；词表优先于缓存，保证改词表后即时生效 */
+    /* 词组优先：多词短语（tear down / in spite of）直接用离线词组库，不消耗翻译接口 */
+    const pm = (IR.phrases && typeof IR.phrases.get === 'function') ? IR.phrases.get(k) : '';
+    if (pm) return { engine: '词组库', text: pm };
+    /* 再查词表（含词形还原：running → run），已有释义就不再调翻译接口；词表优先于缓存，保证改词表后即时生效 */
     if (IR.vocab.cache) {
       for (const c of IR.lemmas(k)) {
         const e = IR.vocab.cache.find(x => x.word === c);
@@ -1181,7 +1360,7 @@ IR.reader = {
     this._transCache.set(k, r);
     return r;
   },
-  async _autoTranslate(popup, word) {
+  async _autoTranslate(popup, word, query) {
     const cfg = IR.settings.data.reader || {};
     if (cfg.autoTranslate === false) return;
     const box = IR.$('[data-trans]', popup);
@@ -1189,7 +1368,7 @@ IR.reader = {
     box.hidden = false;
     box.innerHTML = '<span class="wp-trans-note">翻译中…</span>';
     try {
-      const r = await this._translateWord(word);
+      const r = await this._translateWord(query || word);   /* query：词组用基形查离线词组库 */
       if (popup.hidden || popup.dataset.w !== word) return;   /* 弹窗已关或已换词 */
       box.innerHTML = `<b>${IR.esc(r.engine)}</b>：` + IR.escLines(r.text);
       this._persistMeaning(popup, r.text);          /* 译文回存词表 */
@@ -1446,6 +1625,9 @@ IR.reader = {
       if (this.mode === 'scroll') {
         const max = document.body.scrollHeight - innerHeight;
         this.currentBook.progress = max > 0 ? Math.min(1, scrollY / max) : 0;
+        this.currentBook.mode = 'scroll';
+        const bi = this._topBi();                 /* 记住视口顶部的段落，下次回到这里 */
+        if (bi >= 0) this.currentBook.bi = bi;
         this._saveProgressSoon();
       }
       this._updateProgress();

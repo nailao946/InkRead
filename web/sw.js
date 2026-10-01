@@ -18,6 +18,7 @@ const PRECACHE_URLS = [
   './js/importers.js',
   './js/translate.js',
   './js/vocab.js',
+  './js/phrases.js',
   './js/reader.js',
   './js/settings.js',
   './js/app.js',
