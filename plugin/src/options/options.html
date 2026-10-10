@@ -27,8 +27,22 @@
       <button class="btn" id="btnRefreshVocab">重新同步</button>
     </div>
 
+    <div class="settings-layout">
+      <nav class="settings-tabs" data-tabs title="点击跳转到对应设置">
+        <button data-tab="link">词库联动</button>
+        <button data-tab="prefs">分析偏好</button>
+        <button data-tab="rating">评级体系</button>
+        <button data-tab="caliber">等级口径</button>
+        <button data-tab="article">网页文章</button>
+        <button data-tab="color">上色与标记</button>
+        <button data-tab="translate">翻译接口</button>
+        <button data-tab="about">关于</button>
+        <button data-tab="data">数据</button>
+      </nav>
+      <div class="settings-body">
+
     <!-- ============ 词库联动 ============ -->
-    <section class="card">
+    <section class="card settings-section" data-sec="link">
       <div class="card-h">
         <h2>词库联动</h2>
         <p>决定「生词」以什么为标准：你的墨读词库（已学 / 在学 / 生词本）。</p>
@@ -38,15 +52,15 @@
         <label class="mode" data-mode="auto">
           <input type="radio" name="linkmode" value="auto">
           <div class="mode-b">
-            <b>自动联动本地服务</b>
-            <span>检测墨读桌面版 / 网页版（start-server），自动读取存档目录里的 <code>vocab.json</code>。</span>
+            <b>自动联动词库</b>
+            <span>优先直连<b>绑定的存档目录</b>（无需启动桌面版）；没绑定时再探测墨读桌面版 / 网页版 <code>start-server</code>。</span>
           </div>
         </label>
         <label class="mode" data-mode="manual">
           <input type="radio" name="linkmode" value="manual">
           <div class="mode-b">
             <b>只用导入的词表</b>
-            <span>不访问本地服务，使用下面导入 / 绑定的词表文件。</span>
+            <span>不访问本地服务，使用下面导入的文件；仍可用「存档目录直连」读同一份 <code>vocab.json</code>。</span>
           </div>
         </label>
         <label class="mode" data-mode="off">
@@ -56,6 +70,32 @@
             <span>以空词库分析：把视频里所有词都算作生词，只看「客观难度」。</span>
           </div>
         </label>
+      </div>
+
+      <div class="sub" data-for="auto manual">
+        <div class="row">
+          <label>存档目录直连</label>
+          <div class="row-c">
+            <button class="btn primary" id="btnUsePcDir" title="直接读墨读 PC 端的同一个存档目录，无需再选文件夹">用墨读的目录（推荐）</button>
+            <button class="btn" id="btnBindDir">手动绑定目录…</button>
+            <button class="btn" id="btnSyncDir" hidden>立即读取</button>
+            <button class="btn" id="btnPushMarks" hidden>把标记写回词库</button>
+            <button class="btn danger" id="btnUnbindDir" hidden>解除绑定</button>
+            <span class="hint" id="dirHint">Chrome / Edge 支持。绑定「文档\InkRead」后，插件直接读该目录里的 <code>vocab.json</code>——<b>不必启动桌面版</b>。</span>
+          </div>
+        </div>
+        <div class="row">
+          <label>标记写回共享词库</label>
+          <div class="row-c">
+            <label class="switch"><input type="checkbox" id="linkWriteBack"><i></i></label>
+            <span class="hint">在插件里标记「已学 / 在学 / 生词本」时，同步改存档目录里的 <code>vocab.json</code>；桌面版与网页版打开即一致。</span>
+          </div>
+        </div>
+        <div class="kv" id="dirInfo"></div>
+        <div class="note-box" id="dirNote">
+          <b>一个位置，三端共用</b>：桌面版（WPF）、网页版（<code>start-server</code>）、本扩展都读写
+          <code>&lt;存档目录&gt;\vocab.json</code>。任一端改了词，另一端下次同步即生效——双向的。
+        </div>
       </div>
 
       <div class="sub" data-for="auto">
@@ -70,7 +110,14 @@
           <label>探测起始端口</label>
           <div class="row-c">
             <input type="text" id="ports" placeholder="17890, 8642" spellcheck="false" style="max-width:180px">
-            <span class="hint">桌面版默认 17890，网页版 serve.py 默认 8642，会各自向后试 10 个端口。</span>
+            <span class="hint">桌面版默认 17890，网页版 serve.py 默认 8642，会各自向后试 10 个端口。<b>绑定存档目录后就不再需要它。</b></span>
+          </div>
+        </div>
+        <div class="row">
+          <label>墨读存档目录</label>
+          <div class="row-c" style="flex:1;min-width:0">
+            <div class="hint" id="pcDirOut" style="flex:1;min-width:0">检测中…</div>
+            <button class="btn" id="btnOpenPcDir">打开目录</button>
           </div>
         </div>
         <div class="test-out" id="testOut" hidden></div>
@@ -82,14 +129,6 @@
           <div class="drop-ic">⬆</div>
           <div class="drop-t"><b>点击选择</b>或拖拽文件到此处</div>
           <div class="drop-s">支持：墨读「导出备份」JSON · <code>vocab.json</code> · <code>vocab.csv</code> · 纯词表 txt（每行一个单词）</div>
-        </div>
-        <div class="row" id="fsRow" hidden>
-          <label>读取存档目录</label>
-          <div class="row-c">
-            <button class="btn" id="btnPickDir">选择墨读存档目录…</button>
-            <button class="btn" id="btnSyncDir" hidden>从该目录同步</button>
-            <span class="hint" id="dirHint">Chrome / Edge 支持。选中「文档\InkRead」后可直接读取其中的 vocab.json。</span>
-          </div>
         </div>
         <div class="row">
           <label>纯词表默认状态</label>
@@ -109,7 +148,7 @@
     </section>
 
     <!-- ============ 分析偏好 ============ -->
-    <section class="card">
+    <section class="card settings-section" data-sec="prefs">
       <div class="card-h">
         <h2>分析偏好</h2>
         <p>控制面板显示与字幕抓取行为。</p>
@@ -125,9 +164,9 @@
         <label>徽标位置</label>
         <div class="row-c">
           <div class="seg" id="segSide">
-            <button data-v="right">右下</button>
-            <button data-v="left">左下</button>
+            <button data-v="right" id="posReset">重置到右侧居中</button>
           </div>
+          <span class="hint">默认在视频页<b>右侧垂直居中</b>显示。在页面上<b>直接拖动胶囊</b>即可移动，松手后位置会自动记住（按屏幕比例保存，换分辨率也不跑偏）。</span>
         </div>
       </div>
       <div class="row">
@@ -151,10 +190,156 @@
           <span class="hint">低于此词数会标注「样本偏小，仅供参考」。</span>
         </div>
       </div>
+      <div class="row">
+        <label>字幕逐词标记</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="subsMark"><i></i></label>
+          <span class="hint">在 <b>YouTube / 哔哩哔哩</b> 播放器字幕上逐词上色：生词红色、在学蓝色、未收录橙色。对着字幕<b>直接点词</b>即可看离线释义、改标记。未联动墨读词库时不着色（避免满屏标记反而看不清字幕）。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>字幕标记样式</label>
+        <div class="row-c">
+          <select id="subsMarkStyle" style="max-width:180px">
+            <option value="line">着色 + 下划线（推荐）</option>
+            <option value="mark">加半透明底色</option>
+          </select>
+          <span class="hint">字幕背景复杂，建议保留 <b>着色 + 下划线</b>；如果画面花，可换「底色」提高对比度。</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 评级体系 ============ -->
+    <section class="card settings-section" data-sec="rating">
+      <div class="card-h">
+        <h2>评级体系</h2>
+        <p>同一份分析结果，三套尺子都能用；这里选默认展示哪一套（面板里可随时切换）。</p>
+      </div>
+
+      <div class="modes" id="ratings">
+        <label class="mode" data-rating="step">
+          <input type="radio" name="ratingsys" value="step">
+          <div class="mode-b">
+            <b>阶梯 L1–L4 <span class="tagp">看「对你」</span></b>
+            <span>按可理解度分档，与墨读阅读端同口径；<b>95–98% 是 i+1 理想区</b>。适合决定「现在要不要读这个」。</span>
+          </div>
+        </label>
+        <label class="mode" data-rating="cefr">
+          <input type="radio" name="ratingsys" value="cefr">
+          <div class="mode-b">
+            <b>CEFR A1–C2 <span class="tagp">看文本</span></b>
+            <span>按文本客观用词难度分档（前 2500 高频词覆盖率）。国际通用，方便跟教材 / 考试 / 同学对齐。</span>
+          </div>
+        </label>
+        <label class="mode" data-rating="lexile">
+          <input type="radio" name="ratingsys" value="lexile">
+          <div class="mode-b">
+            <b>蓝思 Lexile <span class="tagp">看文本</span></b>
+            <span>按平均词频对数估算的 <code>###L</code> 数值，接近北美图书的原生标尺。数值越大越难。</span>
+          </div>
+        </label>
+      </div>
+
+      <div class="kv" id="ratingDemo"></div>
+    </section>
+
+    <!-- ============ 网页文章 ============ -->
+    <section class="card settings-section" data-sec="article">
+      <div class="card-h">
+        <h2>网页文章</h2>
+        <p>除视频外，普通网页的英文文章也能分析——还能进入「阅读模式」逐词着色、点词查离线释义。</p>
+      </div>
+      <div class="row">
+        <label>分析网页文章</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="artEnabled"><i></i></label>
+          <span class="hint">关闭后不再抽取正文（内容脚本仍会注入，但不做任何事）。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>自动显示胶囊</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="artAutoPill"><i></i></label>
+          <span class="hint">识别到文章时，在右下角显示评级胶囊；点开可进入阅读模式。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>阅读模式压暗已学词</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="artDim"><i></i></label>
+          <span class="hint">把「已学」的词压暗，只突出在学 / 生词本 / 未收录的词，适合集中攻生词。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>阅读模式字号</label>
+        <div class="row-c">
+          <input type="number" id="artFont" min="13" max="26" step="1" style="max-width:110px">
+          <span class="hint">13–26 px。</span>
+        </div>
+      </div>
+      <div class="note-box">
+        阅读模式里的释义来自<b>墨读自带离线词典</b>（本地服务的 <code>/dict/&lt;字母&gt;.json</code>），
+        不需要联网、也不需要额外安装词典；墨读没运行时只着色、不显示释义。
+      </div>
+    </section>
+
+    <!-- ============ 网页上色与标记 ============ -->
+    <section class="card settings-section" data-sec="color">
+      <div class="card-h">
+        <h2>网页上色与标记</h2>
+        <p>不必进阅读模式——直接在网页正文上给生词着色；点词看释义、随手标记；选中句子可以划线。</p>
+      </div>
+      <div class="row">
+        <label>在网页正文上着色</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="artInline"><i></i></label>
+          <span class="hint">只给<b>没掌握</b>的词着色（在学 / 生词本 / 未收录），已学的词保持原样——满屏着色比不标更伤阅读。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>上色样式</label>
+        <div class="row-c">
+          <select id="artInlineStyle" style="max-width:150px">
+            <option value="line">下划线（默认）</option>
+            <option value="mark">底色高亮</option>
+          </select>
+          <span class="hint">下划线最不扰人；底色在深色页面上更醒目。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>划线样式</label>
+        <div class="row-c">
+          <select id="artHlStyle" style="max-width:150px">
+            <option value="mark">黄色底纹（默认）</option>
+            <option value="line">波浪线</option>
+          </select>
+          <span class="hint">选中一段文字 → 浮动工具条「划线」，像微信读书那样在原文上留痕。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>已关闭上色的站点</label>
+        <div class="row-c">
+          <button class="btn" id="btnClearSiteOff">全部恢复</button>
+          <span class="hint" id="siteOffInfo">—</span>
+        </div>
+      </div>
+      <div class="kv" id="marksInfo"></div>
+      <div class="row">
+        <label>我的标记</label>
+        <div class="row-c">
+          <button class="btn danger" id="btnClearMarks">清空全部词标记与划线</button>
+          <span class="hint">词标记会像「手动校正词库」一样参与所有页面与视频的判定。</span>
+        </div>
+      </div>
+      <div class="note-box">
+        支持站点不止新闻/博客：<b>微信读书（weread.qq.com）</b>、<b>Z-Library / Anna's Archive</b>
+        等阅读器、各类期刊杂志的正文页都已内置容器识别；识别不到时会退回通用正文抽取。
+        标记与划线都只存本机浏览器，不上传。
+      </div>
     </section>
 
     <!-- ============ 数据 ============ -->
-    <section class="card">
+    <section class="card settings-section" data-sec="data">
       <div class="card-h">
         <h2>数据</h2>
         <p>词库缓存与分析结果都只存在本机浏览器里，不会上传。</p>
@@ -170,20 +355,153 @@
     </section>
 
     <!-- ============ 口径说明 ============ -->
-    <section class="card">
-      <div class="card-h"><h2>等级口径</h2></div>
+    <section class="card settings-section" data-sec="caliber">
+      <div class="card-h"><h2>等级口径</h2><p>三套体系各自衡量什么，以及它们之间怎么对应。</p></div>
+
+      <h3 class="subh">① 阶梯阅读法 L1–L4（看「对你」）</h3>
       <div class="legend-table">
         <div class="lt-row"><span class="pill lv1">L1 轻松</span><span>可理解度 ≥98% · 自由阅读区</span></div>
         <div class="lt-row"><span class="pill lv2">L2 适中</span><span>95–98% · <b>i+1 理想区</b>（最值得看）</span></div>
         <div class="lt-row"><span class="pill lv3">L3 偏难</span><span>90–95% · 教学挑战区</span></div>
         <div class="lt-row"><span class="pill lv4">L4 困难</span><span>&lt;90% · 挫败区</span></div>
       </div>
+
+      <h3 class="subh">② CEFR A1–C2（看文本）</h3>
+      <div class="legend-table">
+        <div class="lt-row"><span class="pill lv1">A1 / A2</span><span>前 2500 高频词覆盖率 ≥ 94% / ≥ 87% · 入门–基础</span></div>
+        <div class="lt-row"><span class="pill lv2">B1</span><span>≥ 75% · 中级（能读懂要点）</span></div>
+        <div class="lt-row"><span class="pill lv3">B2</span><span>≥ 62% · 中高级（抽象话题增多）</span></div>
+        <div class="lt-row"><span class="pill lv4">C1 / C2</span><span>≥ 46% / &lt; 46% · 高级–精通（术语与抽象密集）</span></div>
+      </div>
+
+      <h3 class="subh">③ 蓝思 Lexile（看文本）</h3>
+      <div class="legend-table">
+        <div class="lt-row"><span class="pill lv1">≤ 400L</span><span>启蒙–小学低段 · 极短句、绘本</span></div>
+        <div class="lt-row"><span class="pill lv2">400–800L</span><span>小学高段–初中 · 分级读物、青少年小说、日常 vlog</span></div>
+        <div class="lt-row"><span class="pill lv3">800–1000L</span><span>高中 · 新闻、传记、一般科普</span></div>
+        <div class="lt-row"><span class="pill lv4">&gt; 1000L</span><span>大学以上 · 社论、专业文章、学术论文</span></div>
+      </div>
+
       <p class="fine">
         「可理解度」＝（已学词次 + 在学词次）÷ 总词次，与墨读阅读端的书籍难度统计<b>完全同口径</b>，
-        所以视频与电子书的等级可以直接横向比较。
-        「客观难度」则脱离个人词库，用字幕里高频词的占比估算，只反映视频本身的用词难度。
+        所以视频、文章与电子书的 L1–L4 可以直接横向比较。
+        CEFR 与蓝思则<b>脱离你的词库</b>，只反映材料本身的用词难度——蓝思值用的是
+        「平均词频对数」近似法（MetaMetrics 的官方公式未公开），锚点与校验样本见
+        <code>plugin/tools/calibrate-rating.mjs</code>。
       </p>
     </section>
+
+    <!-- ============ 翻译接口 ============ -->
+    <section class="card settings-section" data-sec="translate">
+      <div class="card-h">
+        <h2>翻译接口</h2>
+        <p>给「点词 / 词组 / 整段」补中文。请求经墨读本地服务转发，扩展<b>不额外申请任何网站权限</b>，也不会因跨域被拦。</p>
+      </div>
+
+      <div class="sub">
+        <div class="row">
+          <label>总开关</label>
+          <div class="row-c">
+            <label class="ck"><input type="checkbox" id="trEnabled"><span>启用在线翻译</span></label>
+            <label class="ck"><input type="checkbox" id="trViaLocal"><span>经墨读本地服务转发（推荐 · 联动 PC 端）</span></label>
+          </div>
+        </div>
+
+        <div class="tr-pc" id="trPc">
+          <div class="tr-pc-b" id="trPcBody">正在检测墨读本地服务…</div>
+          <button class="btn primary" id="btnImportApi">从墨读导入接口配置</button>
+        </div>
+
+        <div class="row">
+          <label>使用引擎</label>
+          <div class="row-c">
+            <select id="trEngine"></select>
+            <span class="hint" id="trEngineHint"></span>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>文章段落翻译</label>
+          <div class="row-c">
+            <label class="ck"><input type="checkbox" id="trPara"><span>阅读模式里每段末尾显示「译」按钮，点一下翻本段</span></label>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>词组自动翻译</label>
+          <div class="row-c">
+            <label class="ck"><input type="checkbox" id="trPhrase"><span>离线词组库没收录时，自动在线翻译整组</span></label>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>离线词组库</label>
+          <div class="row-c">
+            <label class="ck"><input type="checkbox" id="phEnabled"><span>启用词组识别（2.4 万条常用词组）</span></label>
+            <label class="ck"><input type="checkbox" id="phUnderline"><span>正文里给词组画一条不断的线</span></label>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>连通性</label>
+          <div class="row-c">
+            <button class="btn" id="btnTrTest">测试翻译（hello）</button>
+            <span class="hint" id="trTestOut"></span>
+          </div>
+        </div>
+      </div>
+
+      <details class="acc">
+        <summary>手动填写 Key（不依赖墨读 PC 端）</summary>
+        <div class="acc-b" id="trKeys"></div>
+      </details>
+    </section>
+
+    <!-- ============ 关于 ============ -->
+    <section class="card settings-section" data-sec="about">
+      <div class="card-h">
+        <h2>关于</h2>
+        <p>InkRead 墨读 · 浏览器扩展（Chrome / Edge / Firefox）</p>
+      </div>
+
+      <div class="kv">
+        <div class="k"><span>名称</span><b class="small">InkRead 墨读 — 视频与文章生词量</b></div>
+        <div class="k"><span>版本</span><b id="abVer">—</b></div>
+        <div class="k"><span>浏览器</span><b class="small" id="abUa">—</b></div>
+        <div class="k"><span>作者</span><b class="small">海鸥 · nailao946</b></div>
+      </div>
+
+      <div class="row">
+        <label>GitHub</label>
+        <div class="row-c">
+          <a class="btn" href="https://github.com/nailao946" target="_blank" rel="noopener">github.com/nailao946</a>
+          <span class="hint">插件端 / 桌面版 / 网页版的全部源码与更新日志</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <label>邮箱</label>
+        <div class="row-c">
+          <a class="btn" href="mailto:hyperola8@gmail.com">hyperola8@gmail.com</a>
+          <a class="btn" href="mailto:hyperola8@gmail.com?subject=InkRead%20%E5%A2%A8%E8%AF%BB%20%E5%8F%8D%E9%A6%88">反馈问题</a>
+        </div>
+      </div>
+
+      <div class="row">
+        <label>隐私</label>
+        <div class="row-c">
+          <span class="hint">不采集 · 不上传 · 不分享任何个人数据；设置、标记、翻译 Key 都只存在你本机。</span>
+        </div>
+      </div>
+
+      <p class="fine">
+        反馈时请附上：浏览器版本、出问题的页面地址、以及「设置 → 数据」里的统计。<br>
+        翻译 API Key 只写进本机扩展存储，不会上传到任何服务器；随时可在「翻译接口」里改或清空。
+      </p>
+    </section>
+
+      </div><!-- /settings-body -->
+    </div><!-- /settings-layout -->
 
     <footer class="foot">
       <span>墨读 InkRead · 视频维度扩展</span>

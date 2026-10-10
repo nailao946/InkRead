@@ -301,10 +301,12 @@ IR.settingsPage = {
         <div class="api-status" data-store-status>存档：检测中…</div>
         <div class="settings-row">
           <button class="btn" data-store-now>立即存档（全部）</button>
+          <button class="btn" data-store-merge>并入磁盘词库</button>
           <button class="btn" data-store-restore>从存档恢复</button>
           <button class="btn btn-ghost" data-store-reveal>查看存档说明</button>
         </div>
-        <p class="settings-note">生词 / 书籍 / 设置自动写入存档目录，重开自动还原；点「查看存档说明」看文件清单。</p>
+        <p class="settings-note">生词 / 书籍 / 设置自动写入存档目录，重开自动还原。
+        <b>「并入磁盘词库」</b>会把磁盘上较新的词并进来、把本机较新的词写回磁盘——浏览器扩展里标的词，在这里点一下就能拿到（反之亦然）。</p>
       </div>
       <div class="panel settings-section" data-sec="data">
         <h3>数据与配置</h3>
@@ -596,6 +598,21 @@ IR.settingsPage = {
       storeStatus('ok', `已存档 ✓ 设置 ${r.settings ? '√' : '×'} · 生词 ${IR.vocab.cache.length} 条 · 书籍 ${r.books} 本`);
       IR.toast('已写入存档目录', 'ok');
     });
+    IR.$('[data-store-merge]', mountEl).addEventListener('click', async () => {
+      const ok = await IR.filestore.probe();
+      if (!ok) { storeStatus('err', '存档不可用：请用桌面版或 start-server 启动'); return; }
+      const mv = await IR.filestore.mergeVocab();
+      if (!mv || !mv.ok) {
+        const why = { 'no-file': '存档目录里还没有 vocab.json', 'bad-json': 'vocab.json 解析失败', 'no-store': '存档不可用' }[(mv && mv.reason) || ''] || '未知原因';
+        storeStatus('err', '合并失败：' + why);
+        IR.toast('合并失败：' + why, 'err');
+        return;
+      }
+      const n = mv.added + mv.updated;
+      storeStatus('ok', `词库已合并 ✓ 从磁盘并入 ${n} 条（新增 ${mv.added} / 更新 ${mv.updated}）· 写回磁盘 ${mv.pushed} 条 · 合计 ${mv.total} 条`);
+      IR.toast(n || mv.pushed ? '词库已与存档一致' : '已经一致，无需合并', 'ok');
+      if (n) setTimeout(() => location.reload(), 900);
+    });
     IR.$('[data-store-restore]', mountEl).addEventListener('click', async () => {
       const ok = await IR.filestore.probe();
       if (!ok) { storeStatus('err', '存档不可用：请用桌面版或 start-server 启动'); return; }
@@ -618,6 +635,9 @@ IR.settingsPage = {
           <li><code>books/&lt;书名&gt;.json</code> —— 每本已导入书籍的正文与阅读进度</li>
           <li><code>settings.json</code> —— 全部设置 + 翻译接口 Key（换端复制这个文件即可）</li>
         </ul>
+        <p style="font-size:.86rem;line-height:1.8"><b>三端共用一个 vocab.json</b>：桌面版、网页版、以及
+        「墨读」浏览器扩展都读写这个文件。扩展里绑定同一个存档目录后，任一端改的词，另一端重开或点
+        「并入磁盘词库」即生效——不需要额外同步服务。</p>
         <p style="font-size:.82rem;color:var(--text-3)">自动存档时机：点词标记状态、批量操作、导入书籍、修改设置时；
         另外程序退出前会补存一次。</p>
         <div class="modal-foot"><button class="btn" onclick="IR.modal.close()">知道了</button>

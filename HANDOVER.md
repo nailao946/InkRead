@@ -43,8 +43,10 @@ READ/
 │  ├─ start-server.bat        一键启动 serve.py（纯 ASCII 提示，避免 cmd 编码乱码）
 │  └─ tests/                  自动化测试（见 §7）+ 小样本 samples/
 ├─ wpf/                       桌面壳（.NET 8 / WPF / WebView2）
-│  ├─ InkRead.csproj          内嵌 web/** 为 EmbeddedResource（LogicalName=web/...）；无 CopyWeb 拷贝步骤
-│  ├─ MainWindow.xaml         自绘标题栏（深纸色+金徽标，与 web 同色系）+ WebView2 内容区
+│  ├─ InkRead.csproj          内嵌 web/** 为 EmbeddedResource（LogicalName=web/...）；无 CopyWeb 拷贝步骤；
+│  │                          ApplicationIcon=Assets\InkRead.ico（任务栏/资源管理器图标，7 尺寸 16→256）
+│  ├─ Assets/InkRead.ico      应用图标（BMP 16/24/32/48/64 + PNG 128/256）；gen-ico.mjs 生成 + 预览 PNG
+│  ├─ MainWindow.xaml         自绘标题栏（深纸色+金徽标，与 web 同色系）+ WebView2 内容区 + Icon
 │  ├─ MainWindow.xaml.cs      显式初始化 WebView2、导航、诊断日志、备用 WebMessage 桥、窗口按钮
 │  ├─ LocalServer.cs          内置本地服务：静态(内嵌资源) + /__proxy 转发 + /__store 存档 + 固定端口
 │  └─ 构建说明.md             构建/发布/排障说明（含白屏排查顺序）
@@ -55,15 +57,20 @@ READ/
 │  ├─ manifest.json           Chrome/Edge 清单（service_worker）
 │  ├─ manifest.firefox.json   Firefox 清单（event page）
 │  ├─ build.mjs               打包 → dist/<目标>/ + zip（自带零依赖 ZIP 写入器）
+│  ├─ STORE.md                商店上架资料（文案/权限理由/隐私政策模板/截图清单/审核备注）
+│  ├─ store/                  商店素材：logo-300 · promo-440x280 · marquee-1400x560 + preview.html（不进 zip）
 │  ├─ gen-icons.mjs           （在 tools/ 内）生成 icons/*.png
 │  ├─ data/freq-bands.json    高频词表 8107 词（双语料交集清洗，随仓库分发）
-│  ├─ src/shared/             纯逻辑：text(分词/词形/等级) · freq(词频分层) · analyze · subs(字幕) ·
-│  │                          vocab-source(本地服务/文件) · store · api(浏览器垫片)
-│  ├─ src/background/sw.js    编排：取播放器数据 → 抓字幕 → 分析 → 缓存 + 角标
-│  ├─ src/content/content.js  页面悬浮徽标 + 面板（Shadow DOM 隔离）
-│  ├─ src/popup · src/options 弹出面板 / 设置页
-│  ├─ tests/                  test-core（99）· test-integration（81）· e2e-browser（真机 CDP）
-│  └─ tools/                  make-freq · calibrate · gen-icons · check-syntax
+│  ├─ src/shared/             纯逻辑：text(分词/词形/等级) · freq(词频分层) · analyze · subs(字幕 json3/srv3) ·
+│  │                          vocab-source(本地服务/文件) · vocab-sync(三端合并回写·纯函数) · store ·
+│  │                          idb(IndexedDB 句柄持久化) · fsh(File System Access 封装) ·
+│  │                          fssync(直连/离屏目录读写客户端) · api(浏览器垫片)
+│  ├─ src/background/sw.js    编排：取播放器数据 → 抓字幕 → 分析 → 缓存 + 角标 + 词库回写
+│  ├─ src/content/content.js  页面悬浮徽标 + 面板（Shadow DOM 隔离；可拖动、位置记忆）
+│  ├─ src/offscreen/          离屏文档（`ir:fs` 中转，绕开 Service Worker 无 DOM 的限制）
+│  ├─ src/popup · src/options 弹出面板 / 设置页（含「绑定存档目录」交互）
+│  ├─ tests/                  test-core（232）· test-integration（276）· e2e-browser（158，真机 CDP）
+│  └─ tools/                  make-freq · calibrate · gen-icons · gen-store · check-syntax
 ├─ THEMES.md                  主题规范与维护契约
 ├─ HANDOVER.md                本文件
 ├─ README.md / README.en.md   中英文说明
@@ -95,6 +102,9 @@ InkRead.exe
         └─ 前端资源由 LocalServer 从「内嵌资源」读出（磁盘目录仅开发覆盖 INKREAD_WEB_DIR）
 ```
 桌面版因此与网页版**共用同一套前端**，同时桌面独享：本地转发（无需 Python）、磁盘存档、系统代理跟随。
+
+任务栏/资源管理器图标走 `Assets/InkRead.ico`（`ApplicationIcon` + `MainWindow.Icon` 双挂），由
+`wpf/tools/gen-ico.mjs` 生成（BMP 16/24/32/48/64 + PNG 128/256，共 7 尺寸），并输出 `InkRead-preview.png` 供肉眼核对。
 
 ---
 
@@ -235,9 +245,9 @@ cd tools/server-smoke && dotnet run --project server-smoke.csproj -- "..\..\web"
 | `node web/tests/test-bridge.mjs` | 桌面 WebMessage 桥协议（拦截/体/头/状态/错误/并发/中文） |
 | `node web/tests/test-dict.mjs` | 词典分片、lookup、词形还原、file:// 降级 |
 | `node web/tests/mobi-repro.mjs [文件]` | 用真实 MOBI 复现导入问题（诊断工具） |
-| `node plugin/tests/test-core.mjs` | **扩展核心**：分词/词形还原/覆盖率/等级档位/词频分层/站点识别/字幕解析/词表解析 |
-| `node plugin/tests/test-integration.mjs` | **扩展集成**：两份 manifest 字段与资源存在性、import 依赖图、HTML 资源、端到端分析管线 |
-| `node plugin/tests/e2e-browser.mjs` | **扩展真机 E2E**：Edge + CDP 假视频页 + 假墨读本地服务，跑通「注入→抓字幕→比对词库→面板」 |
+| `node plugin/tests/test-core.mjs` | **扩展核心**：分词/词形还原/覆盖率/等级档位/词频分层/站点识别/字幕解析（json3+srv3）/词表解析/三端词库合并回写 |
+| `node plugin/tests/test-integration.mjs` | **扩展集成**：两份 manifest 字段与资源存在性、import 依赖图、HTML 资源、离屏文档接线、端到端分析管线、商店资料与品牌图 |
+| `node plugin/tests/e2e-browser.mjs` | **扩展真机 E2E**：Edge + CDP 假视频页 + 假墨读本地服务，跑通「注入→抓字幕→比对词库→面板→存档目录直连→胶囊拖动与位置记忆（视频页 + 文章页）→晚渲染正文重试」 |
 | `node plugin/tools/check-syntax.mjs` | 扩展源码语法检查（把 .js 按 ESM 解析） |
 
 ---
@@ -267,16 +277,56 @@ cd tools/server-smoke && dotnet run --project server-smoke.csproj -- "..\..\web"
 
 把墨读的「词汇分级」能力延伸到**视频**：在哔哩哔哩 / YouTube 上算一个视频的**生词量、等级、i+1 推荐**。
 
-- **联动现成、零改造**：扩展直接复用本项目的本地服务 `/__store`（已带 `Access-Control-Allow-Origin: *`），
-  探测 17890（桌面版）/ 8642（网页版）起始端口 → 读 `settings.json` 拿用户自定义 `storageDir` → 读 `vocab.json`。
-  **只读不写**，墨读侧无需任何改动。墨读没开时可导入「导出备份 JSON / vocab.json / vocab.csv / 纯词表 txt」，
-  Chrome/Edge 还可用 File System Access 绑定存档目录直接读。
+- **词库来源四选一，优先级从高到低**：
+  1. **存档目录直连（推荐，v1.3.0 起）**：用 File System Access 绑定 `存档目录`（就是桌面/网页版写的那个
+     `vocab.json` 所在目录），**不需要启动桌面版**，也不依赖任何本地服务。选中目录后句柄存进 IndexedDB
+     （`inkread-video` 库 `h` store），Service Worker / 选项页 / 离屏文档三处共用。
+  2. **本地服务**：复用本项目 `/__store`（已带 `Access-Control-Allow-Origin: *`），探测 17890（桌面版）/
+     8642（网页版）起始端口 → 读 `settings.json` 拿自定义 `storageDir` → 读 `vocab.json`。墨读没开就没有这条。
+  3. **导入文件**：墨读没开时的兜底 —— 导入「导出备份 JSON / vocab.json / vocab.csv / 纯词表 txt」。
+  4. **旧版导入快照**：更早语法的导入结果直接当词库用。
+- **MV3 取目录的坑 & 解**：Service Worker 没有 DOM，`showDirectoryPicker` 只能在有 UI 的上下文调。
+  因此：选项页负责 `showDirectoryPicker` 拿句柄 → 写 IndexedDB；后台/离屏要读文件时，**通过离屏文档
+  （`chrome.offscreen.createDocument`，reason `BLOBS`，页面 `src/offscreen/offscreen.html`）转发 `ir:fs` 消息**去执行
+  `runOp()`（`status|list|exists|read|write`）。三级降级：直连 → 离屏 → 不支持（Firefox）→ 回退到本地服务/导入。
+  离屏创建失败带 60s 冷却。目录操作每次 5s 超时。
+- **三端同步、共用一个 `vocab.json`**：插件不再只读——在视频里标的词会**回写**到同一个 `vocab.json`。
+  - 合并逻辑是纯函数 `plugin/src/shared/vocab-sync.js`（Node 可测）：`marksToChanges()` 把 `iv.marks.words`
+    转成变更集 → `upsertEntries()` 按词 `upsert`，已存在的词**只更新 `status` + `updatedAt`、保留其它字段**，
+    新词追加完整记录（`source='inkread-plugin'`）。写前用 `wouldChange()` 判空，**无变化不落盘**（幂等）。
+    `stringifyVocab()` 用 1 空格缩进，跟 `web/js/filestore.js` 保持字节级一致；`parseVocabText()` 兼容 BOM 与
+    `{vocab:[…]}` 两种形状。
+  - 网页/桌面版在**每次启动 `restore()`** 时调 `web/js/filestore.js#mergeVocab()`：按每词 `updatedAt` 双向合并，
+    磁盘更新→并入本地，本地更新→回写磁盘；没变化不写。设置页另给手动「并入磁盘词库」按钮。
+  - 合并口径以 `updatedAt` 新旧为准（新的赢），因此三端任一处改动，其它两端下次启动/手动同步即对齐。
+- **写回开关**：选项里 `link.writeBack`（默认开）。关掉就退回只读行为，只读不写。
+- **权限与手势限制**：FSA 目录句柄的读写权限需要**用户手势**里 `requestPermission`；Firefox 无 FSA，
+  直连那条不可用（离屏文档也不支持），自动降级到本地服务/导入。
 - **口径必须一致**：`plugin/src/shared/text.js` 的分词正则、`lemmas()`、覆盖率公式、
   `levelOf()` 四档阈值，全部**逐行照搬** `web/js/util.js` + `web/js/reader.js`。
   改任何一边，另一边必须同步——否则「视频等级」和「书籍难度」就没法比较了。
-- **字幕来源**：YouTube 走 `ytInitialPlayerResponse.captions` → `timedtext?fmt=json3`；
+- **字幕来源**：YouTube 的**真根因是 PoToken** —— 2024–2025 起 `/api/timedtext` 要求 `pot`，
+  缺了返回 **200 + 空 body**（不抛错，静默退化成「只读标题」）。取轨优先级：
+  `#movie_player.getAudioTrack().captionTracks`（**会话已签名**，多带有效 pot）→ `getPlayerResponse()`
+  → `ytInitialPlayerResponse` → 都没有时用 **InnerTube `/youtubei/v1/player`（ANDROID 客户端）** 再要一份。
+  每条轨经 `ytCaptionUrls` 生成候选（json3 → 去 pot 标记 → 原样 → 去 pot 原样）逐个试；
+  通道为「内容脚本**页面上下文**（同源带 Cookie）→ SW 直连」，页面尝试带 **AbortController 硬超时**、
+  SW 侧对消息再加**竞速超时**（**任何一条通道卡住都不挂死分析**）。
+  凭据只用 `same-origin` / `omit`，**不用** `include`（对不回显凭据的跨域目标会长时间挂起）。
+  面板头部标出 `播放器签名轨/播放器响应/InnerTube 兜底` + `页面通道/后台通道`。
+  ⚠️ `ytCaptionUrls` / `stripPot` 是纯函数（`src/shared/subs.js`），改动须同步单测。
   哔哩哔哩走页面内嵌 `__INITIAL_STATE__.videoData.subtitle`（免登录）→ 兜底 `api.bilibili.com/x/player/v2`。
-  取播放器数据优先用 `scripting.executeScript({world:'MAIN'})`，不支持时（FF<128）回退到内容脚本扫 `<script>` 标签。
+  取播放器数据优先 `scripting.executeScript({world:'MAIN'})`，且**只有真拿到 playerResponse 或签名轨才置 `ok`**，
+  否则回退内容脚本扫 `<script>`（FF<128 也走这条）。
+- **多行文本必须走 `escLines`**：内容脚本里 `esc()` 只做 HTML 转义；词典释义（ECDICT）里存的是
+  **字面量 `\n`（反斜杠+n）**，要用 `escLines()`（与 `web/js/util.js#escLines` 同口径）把字面量 `\n` 与
+  真实换行都转成换行，否则界面上会原样显示 `\n`。
+- **悬浮胶囊位置**：默认**右侧垂直居中**；`ui.pos={x,y}` 按**视口可用空间比例**存（换分辨率不跑偏）；
+  拖动用 pointer 事件 + 4px 抖动阈值区分点击；面板按胶囊所在半屏决定 `data-side`、按上方空间决定
+  `data-v`（向上/向下展开）；设置页有「重置到右侧居中」。
+- **上架资料在 `plugin/STORE.md`**（文案 / 权限理由 / 隐私政策模板 / 截图清单 / 审核备注 / 提交步骤），
+  商店图由 `node plugin/tools/gen-store.mjs` 生成到 `plugin/store/`（300 店标 / 440×280 / 1400×560）。
+  `store/` 与 `STORE.md` 属开发件，**不进 zip**（`build.mjs` 只收 `src/`、`icons/`、`data/`）。
 - **客观难度**另有一条与用户无关的尺子：`data/freq-bands.json`（8107 词，双语料交集清洗）
   按排名分 5 档算「常用词占比」。阈值由 `tools/calibrate.mjs` 实测校准。
 - **无构建步骤**：改完 `src/` 在扩展管理页点「重新加载」。`node plugin/build.mjs` 出 `dist/`。

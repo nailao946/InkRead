@@ -31,12 +31,59 @@ export function detectSite(href) {
 }
 
 /* ---------- YouTube ---------- */
-/** 给 timedtext baseUrl 追加 fmt=json3（已有则不重复） */
+/**
+ * 给 timedtext baseUrl 强制 `fmt=json3`（已有别的 fmt 值就覆盖，不是只补缺失）。
+ * json3 是 YouTube 目前最稳定、也最好解析的格式。
+ */
 export function ytJson3Url(baseUrl) {
   if (!baseUrl) return '';
   let u = String(baseUrl);
-  if (!/[?&]fmt=/.test(u)) u += (u.includes('?') ? '&' : '?') + 'fmt=json3';
+  if (/[?&]fmt=[^&]*/.test(u)) u = u.replace(/([?&])fmt=[^&]*/, '$1fmt=json3');
+  else u += (u.includes('?') ? '&' : '?') + 'fmt=json3';
   return u;
+}
+
+/**
+ * 去掉 PoToken 标记参数（`exp=xpe` / `potc` / `pot`），得到「干净 URL」再试一次。
+ *
+ * ⚠️ 真根因（2024–2025 起，实测确认）：
+ * YouTube 对 `/api/timedtext` 强制要求 `pot`（Proof-of-Origin Token，来源证明令牌）。
+ * **缺 token 时不报错，而是返回 HTTP 200 + 空 body** —— 于是上层静默退化成
+ * 「只读标题/简介」。页面初始 `ytInitialPlayerResponse` 里的 baseUrl 常带
+ * `exp=xpe`/`potc=1` 标记（说明它会走 PoToken 校验），直接请求必空。
+ * 能拿到内容的可靠来源是**活动播放器实例已签名的 URL**（`movie_player.getAudioTrack()`）。
+ * 把带标记的 URL 去掉这些参数后，一部分视频仍可直接取到字幕，故留作兜底候选。
+ */
+export function stripPot(url) {
+  if (!url) return '';
+  let u = String(url).replace(/([?&])(?:exp|potc|pot)=[^&]*/g, '$1');
+  u = u.replace(/&&+/g, '&').replace(/\?&/g, '?').replace(/[?&]+$/, '');
+  return u;
+}
+
+/** 把可能相对的 timedtext URL 归一化成绝对地址（播放器实例偶尔给 `/api/timedtext?...`） */
+export function absYtUrl(u) {
+  const s = String(u || '');
+  if (!s) return '';
+  if (s.startsWith('//')) return 'https:' + s;
+  if (s.startsWith('http')) return s;
+  if (s.startsWith('/')) return 'https://www.youtube.com' + s;
+  return s;
+}
+
+/**
+ * 生成 YouTube 字幕 URL 候选（按「最可能成功」排序、去重）。
+ * 上层逐个尝试，任一拿到非空内容即返回。
+ */
+export function ytCaptionUrls(baseUrl) {
+  const base = absYtUrl(baseUrl);
+  const out = [];
+  const push = u => { if (u && !out.includes(u)) out.push(u); };
+  push(ytJson3Url(base));            /* ① json3（首选） */
+  push(stripPot(ytJson3Url(base)));  /* ② json3 + 去 PoToken 标记 */
+  push(base);                        /* ③ 原样（srv3 / srv1 XML） */
+  push(stripPot(base));              /* ④ 原样 + 去 PoToken 标记 */
+  return out;
 }
 
 /** 在 captionTracks 里挑最合适的轨（优先英语、优选人工字幕） */
@@ -70,13 +117,25 @@ export function parseYoutubeJson3(obj) {
   return parts.join('\n');
 }
 
-/** XML（timedtext 默认格式）→ 文本 */
+/** XML（timedtext 默认格式）→ 文本
+ *  两种格式都认：
+ *  - 经典 `fmt=srv1`：`<text start=.. dur=..>…</text>`
+ *  - `fmt=srv3`：`<p t=.. d=..><s>…</s><s>…</s></p>`
+ *  返回按「句/行」用 \n 分隔的纯文本。 */
 export function parseYoutubeXml(xml) {
+  const s = String(xml || '');
   const parts = [];
-  const re = /<text[^>]*>([\s\S]*?)<\/text>/gi;
+  let re = /<text[^>]*>([\s\S]*?)<\/text>/gi;
   let m;
-  while ((m = re.exec(xml))) {
+  while ((m = re.exec(s))) {
     const t = decodeEntities(m[1]).replace(/\s+/g, ' ').trim();
+    if (t) parts.push(t);
+  }
+  if (parts.length) return parts.join('\n');
+  /* srv3：每个 <p> 是一句，内部可能再套 <s>/<br> 分段 */
+  re = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  while ((m = re.exec(s))) {
+    const t = decodeEntities(m[1].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
     if (t) parts.push(t);
   }
   return parts.join('\n');
@@ -140,14 +199,20 @@ export function parseBilibiliSub(obj) {
 export function parseSubtitle(site, bodyText) {
   const t = String(bodyText || '').trim();
   if (!t) return '';
+  if (site === 'bilibili') {
+    if (t[0] === '{' || t[0] === '[') {
+      try { return parseBilibiliSub(JSON.parse(t)); } catch (e) { /* 落到 XML */ }
+    }
+    return '';
+  }
+  /* YouTube：先按 json3 解析；空结果再退到 XML（srv1/srv3），双向兜底 */
   if (t[0] === '{' || t[0] === '[') {
     try {
-      const obj = JSON.parse(t);
-      return site === 'bilibili' ? parseBilibiliSub(obj) : parseYoutubeJson3(obj);
+      const txt = parseYoutubeJson3(JSON.parse(t));
+      if (txt) return txt;
     } catch (e) { /* 落到 XML */ }
   }
-  if (site === 'youtube') return parseYoutubeXml(t);
-  return '';
+  return parseYoutubeXml(t);
 }
 
 /** 文本粗画像（用于「样本是否足够」判断与 UI 展示） */

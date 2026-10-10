@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "InkRead Video — 视频生词量与等级",
-  "version": "1.0.0",
-  "description": "识别哔哩哔哩 / YouTube 视频的生词量：与墨读词库联动，给出视频等级与 i+1 可理解输入推荐。",
+  "name": "InkRead 墨读 — 视频与文章生词量",
+  "version": "1.5.0",
+  "description": "识别哔哩哔哩 / YouTube 视频与网页文章的生词量：联动墨读词库给出 L1–L4 / CEFR / 蓝思三套评级；字幕与正文逐词上色、点词查离线释义与在线翻译，支持 2.4 万条常用词组。",
   "browser_specific_settings": {
     "gecko": {
       "id": "inkread-video@inkread.local",
@@ -18,7 +18,6 @@
     "*://*.bilibili.com/*",
     "*://*.hdslb.com/*",
     "*://*.youtube.com/*",
-    "*://*.googlevideo.com/*",
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
@@ -30,7 +29,7 @@
   },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "InkRead Video — 分析当前视频",
+    "default_title": "InkRead 墨读 — 分析当前页面",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -56,6 +55,17 @@
       ],
       "js": [
         "src/content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/article.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

@@ -137,3 +137,11 @@ main { padding: 0 14px 6px; min-height: 150px; }
 .btn.primary { background: linear-gradient(140deg, #f5c451, #d97706); border-color: transparent; color: #1a1407; font-weight: 700; }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn[disabled] { opacity: .5; cursor: default; }
+
+/* ---------- 评级体系切换（L1–L4 / CEFR / 蓝思） ---------- */
+.sw { display: flex; gap: 3px; padding: 3px; margin: 0 14px 10px; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 10px; }
+.sw button { flex: 1; border: 0; background: transparent; color: var(--dim); font: inherit; font-size: 11.5px; font-weight: 600; padding: 5px 0; border-radius: 7px; cursor: pointer; transition: background .14s ease, color .14s ease; }
+.sw button:hover { color: var(--txt); }
+.sw button[data-on="1"] { background: rgba(255,255,255,.12); color: #fff; }
+.allrate { font-size: 11px; color: var(--dim2); margin-top: 6px; }
+.allrate b { color: #cfd4de; font-weight: 600; }

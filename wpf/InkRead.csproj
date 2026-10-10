@@ -20,7 +20,18 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- 应用图标（exe 资源 + 任务栏/资源管理器）。
+         由 tools/gen-ico.mjs 生成，改图标后重跑：node wpf/tools/gen-ico.mjs -->
+    <ApplicationIcon>Assets\InkRead.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 同一个 .ico 既做 exe 图标，也做窗口图标（WindowChrome 无系统标题栏时，
+         任务栏与 Alt+Tab 用的是「窗口图标」）。先 Remove 掉默认的 None 项，否则会重复。 -->
+    <None Remove="Assets\InkRead.ico" />
+    <Resource Include="Assets\InkRead.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- WebView2：内嵌 Edge 内核，复用现有前端。

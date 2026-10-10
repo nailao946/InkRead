@@ -123,21 +123,36 @@ READ/
 | `books/<书名>.json` | 每本已导入书籍的正文与阅读进度 |
 | `settings.json` | 全部设置 + 翻译接口 Key（**换端只需替换这个文件**） |
 
-写入时机：标记单词状态、批量操作、导入书籍、修改设置（防抖 0.7s）、退出前补存一次；
-启动时若本机为空则自动从存档还原。直接双击 `index.html` 时无本地服务，自动退回浏览器存储。
+写入时机：标记单词状态、批量操作、导入书籍、修改设置（防抖 0.7s）、退出前补存一次。
+**启动时不再只是「本机为空才还原」，而是与磁盘做一次双向合并**（见下），所以另端的改动重开本端就能拿到。
+直接双击 `index.html` 时无本地服务，自动退回浏览器存储。
 
 换设备也可用「设置 → 导出配置 / 导入配置」（仅配置）或「导出全量备份 / 恢复全量备份」（含词库）。
+
+### 一个 `vocab.json`，三端共用（桌面版 / 网页版 / 浏览器扩展）
+
+`<存档目录>\vocab.json` 是**唯一的词库真相**：桌面版（WPF）、网页版（`start-server`）、以及
+`plugin/` 里的浏览器扩展都读写同一个文件，不需要任何同步服务。
+
+- **合并规则**（`web/js/filestore.js#mergeVocab`，也是扩展侧写回的口径）：
+  逐词比 `updatedAt`，谁改得晚听谁的；磁盘有、本机没有的词并入本机；本机较新的词写回磁盘。
+  **永远不会用另一端的旧数据覆盖较新的编辑**，也不会丢掉任一端独有的词。
+- **桌面版 / 网页版**：启动时自动合并；也可在「设置 → 存储与存档 → **并入磁盘词库**」手动触发。
+- **浏览器扩展**：在「设置 → 词库联动 → 存档目录直连」里绑定同一个目录后，**不启动桌面版也能读词库**；
+  扩展里标记的词会立刻写回 `vocab.json`（可用开关关掉）。
+- 合并只针对 `vocab.json`（程序无损读回的那份）；`vocab.csv` 是给人看的表格，手改不会自动回流。
 
 ## 测试
 
 ```
-node tests/test-importers.mjs   # 20/20：TXT 编码、EPUB、MOBI（PalmDOC 回溯+尾随裁剪+多字节重叠）、词表、词形还原、翻译签名
+node tests/test-importers.mjs   # 19/19：TXT 编码、EPUB、MOBI（PalmDOC 回溯+尾随裁剪+多字节重叠）、词表、词形还原、翻译签名
 node tests/test-bridge.mjs      # 15/15：桌面版 API 转发桥（拦截/请求体/请求头/状态码/错误路径/并发配对/中文安全）
-node tests/test-engines.mjs     # 24/24：4 家官方引擎注册与分派、auto 链顺序、只填 API Key 的两家、HMAC 与 Node crypto 对拍
-node tests/test-store.mjs       # 18/18：磁盘存档（真实写文件）——CSV 格式/转义/BOM、settings/书籍读写、路径穿越防护、启动还原、自动挂钩
+node tests/test-engines.mjs     # 72/72：各家引擎注册与分派、auto 链顺序、自定义顺序、HMAC 与 Node crypto 对拍
+node tests/test-store.mjs       # 31/31：磁盘存档（真实写文件）——CSV/转义/BOM、settings/书籍读写、路径穿越防护、
+                                #        启动还原、自动挂钩、★ 三端词库双向合并（按 updatedAt / 幂等 / 缺文件降级）
 node tests/test-dict.mjs        # 8/8：词典分片、lookup、词形还原、file:// 降级
-node tests/test-shelf.mjs       # 46/46：状态推断、分组增删改与图标、阅读时长、进度节流、分组框渲染、词频难度与阶梯档位
-node tests/test-web.mjs         # 18/18：web 端完整性（资源可达与 MIME、关键脚本、转发/存档可用、页面结构与新特性就位）
+node tests/test-shelf.mjs       # 88/88：状态推断、分组增删改与图标、阅读时长、进度节流、分组框渲染、词频难度与阶梯档位、词组
+node tests/test-web.mjs         # 66/66：web 端完整性（资源可达与 MIME、关键脚本、转发/存档可用、页面结构、三端同步入口就位）
 ```
 
 > 项目整体架构、模块职责、数据模型与接手须知见 [HANDOVER.md](./HANDOVER.md)（供后续开发者 / AI 快速接续）。

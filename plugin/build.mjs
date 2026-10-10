@@ -50,7 +50,7 @@ function build(target) {
     if (!entries.some(e => e.name === need)) throw new Error('缺少必需文件：' + need);
   }
 
-  const zipPath = resolve(DIST, `inkread-video-${target}-v${man.version}.zip`);
+  const zipPath = resolve(DIST, `inkread-${target}-v${man.version}.zip`);
   const buf = makeZip(entries);
   writeFileSync(zipPath, buf);
 

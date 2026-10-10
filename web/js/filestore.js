@@ -89,6 +89,52 @@ IR.filestore = {
     };
   },
 
+  /* ---------- 双向合并：磁盘 vocab.json ⇄ 本机词库 ----------
+     桌面版 / 网页版 / 浏览器扩展读写的是同一个 <存档目录>/vocab.json。
+     合并规则（不会用「另一端的旧数据」覆盖掉较新的编辑）：
+       · 逐词比 updatedAt（缺则用 addedAt），谁改得晚听谁的；
+       · 磁盘有、本机没有的词 → 并入本机；
+       · 本机有、磁盘没有的词，或本机更新 → 保留本机并写回磁盘。
+     返回 { ok, added, updated, pushed, total } */
+  async mergeVocab() {
+    if (!await this.probe()) return { ok: false, reason: 'no-store' };
+    const txt = await this.read('vocab.json');
+    if (!txt) return { ok: false, reason: 'no-file' };
+    let disk = null;
+    try { disk = JSON.parse(txt); } catch (e) { return { ok: false, reason: 'bad-json' }; }
+    if (!Array.isArray(disk)) disk = [];
+
+    const keyOf = e => String((e && (e.word || e.display)) || '').trim().toLowerCase();
+    const tsOf = e => Number((e && (e.updatedAt || e.addedAt)) || 0) || 0;
+
+    const picked = new Map();        /* 需要写回本机存储的记录 */
+    const byWord = new Map();
+    for (const e of (IR.vocab.cache || [])) { const k = keyOf(e); if (k) byWord.set(k, e); }
+
+    let added = 0, updated = 0;
+    const pushBack = [];
+    for (const de of disk) {
+      const k = keyOf(de);
+      if (!k) continue;
+      const cur = byWord.get(k);
+      if (!cur) { byWord.set(k, de); picked.set(k, de); added++; continue; }
+      const dt = tsOf(de), ct = tsOf(cur);
+      if (dt > ct) { byWord.set(k, de); picked.set(k, de); updated++; }
+      else if (ct > dt) pushBack.push(cur);
+    }
+
+    let pushed = 0;
+    if (picked.size) {
+      await IR.vocabStore.bulkPut(Array.from(picked.values()));
+      await IR.vocab.reload();
+    }
+    if (pushBack.length) {
+      const ok = await this.saveVocab();
+      if (ok) pushed = pushBack.length;
+    }
+    return { ok: true, added, updated, pushed, total: byWord.size, disk: disk.length };
+  },
+
   /* ---------- 存档动作 ---------- */
   async saveSettings() {
     if (this._restoring) return false;
@@ -142,7 +188,7 @@ IR.filestore = {
   async restore() {
     if (!await this.probe()) return null;
     this._restoring = true;
-    const out = { settings: false, vocab: 0, books: 0 };
+    const out = { settings: false, vocab: 0, books: 0, vocabTotal: 0, pushed: 0 };
     try {
       if (!localStorage.getItem('ir.settings')) {
         const txt = await this.read('settings.json');
@@ -152,20 +198,6 @@ IR.filestore = {
         }
       }
     } catch (e) { /* 忽略损坏存档 */ }
-
-    try {
-      if (!(IR.vocab.cache || []).length) {
-        const txt = await this.read('vocab.json');
-        if (txt) {
-          const arr = JSON.parse(txt);
-          if (Array.isArray(arr) && arr.length) {
-            await IR.vocabStore.bulkPut(arr);
-            await IR.vocab.reload();
-            out.vocab = arr.length;
-          }
-        }
-      }
-    } catch (e) { /* 忽略 */ }
 
     try {
       const files = await this.list('books');
@@ -185,6 +217,18 @@ IR.filestore = {
     } catch (e) { /* 忽略 */ }
 
     this._restoring = false;
+
+    /* 词库：不再是「本地为空才还原」，而是每次都双向合并 ——
+       这样在浏览器扩展 / 另一台机器上标的词，重开本端就能拿到（反之亦然）。 */
+    try {
+      const mv = await this.mergeVocab();
+      if (mv && mv.ok) {
+        out.vocab = mv.added + mv.updated;
+        out.vocabTotal = mv.total;
+        out.pushed = mv.pushed;
+      }
+    } catch (e) { /* 忽略损坏的词库存档 */ }
+
     return out;
   },
 

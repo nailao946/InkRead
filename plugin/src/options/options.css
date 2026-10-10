@@ -165,3 +165,60 @@ input[type=text]:focus, input[type=number]:focus, select:focus { outline: none; 
 }
 .toast[data-t="ok"] { border-color: rgba(46, 158, 107, .5); }
 .toast[data-t="err"] { border-color: rgba(214, 69, 69, .5); }
+
+/* ---------- 评级体系 / 文章阅读（新增） ---------- */
+.tagp { font-size: 10px; font-weight: 600; color: var(--dim2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+.subh { font-size: 12px; font-weight: 700; color: #cfd4de; margin: 16px 0 8px; letter-spacing: .02em; }
+.subh:first-of-type { margin-top: 4px; }
+.note-box { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; font-size: 12px; line-height: 1.6; color: var(--dim); background: rgba(255,255,255,.025); }
+.note-box b { color: #cfd4de; }
+.note-box code, .fine code { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 5px; }
+
+/* ================= 左侧悬浮 tab 栏（设置分区导航） =================
+   点击平滑滚到对应分区，滚动时高亮当前分区。窄屏（<720px）自动变成顶部横向换行。 */
+.settings-layout { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 16px; align-items: start; }
+.settings-tabs {
+  position: sticky; top: 14px; display: flex; flex-direction: column; gap: 3px;
+  padding: 8px; border: 1px solid var(--line2); border-radius: 14px; background: rgba(255,255,255,.035);
+}
+.settings-tabs button {
+  text-align: left; border: 0; background: transparent; color: var(--dim);
+  font: inherit; font-size: 12.5px; padding: 7px 10px; border-radius: 9px; cursor: pointer;
+}
+.settings-tabs button:hover { background: rgba(255,255,255,.07); color: #e8eaf0; }
+.settings-tabs button.active { background: rgba(245,196,81,.16); color: #f5c451; font-weight: 700; }
+.settings-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.settings-section { scroll-margin-top: 14px; }
+
+/* ---------- 复选行 / 下拉 / 链接式按钮 / 折叠 ---------- */
+.ck { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--dim); cursor: pointer; }
+.ck input { accent-color: #d97706; width: 15px; height: 15px; }
+select { background: rgba(255,255,255,.06); border: 1px solid var(--line2); color: #e8eaf0;
+  font: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 9px; outline: none; max-width: 300px; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ---------- 翻译：墨读 PC 端状态条 ---------- */
+.tr-pc { display: flex; align-items: center; gap: 12px; padding: 11px 13px; margin: 10px 0 2px;
+  border: 1px solid var(--line2); border-radius: 12px; background: rgba(255,255,255,.03); flex-wrap: wrap; }
+.tr-pc-b { flex: 1; min-width: 230px; font-size: 12.5px; line-height: 1.65; color: var(--dim); }
+.tr-pc-b b { color: #cfd4de; }
+.tr-pc-b code { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+  background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 5px; word-break: break-all; }
+.tr-pc[data-ok="1"] { border-color: rgba(46,158,107,.42); }
+.tr-pc[data-ok="0"] { border-color: rgba(217,138,25,.42); }
+.hint code { font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+  background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 5px; word-break: break-all; }
+
+.acc { margin-top: 14px; border-top: 1px dashed var(--line2); padding-top: 12px; }
+.acc > summary { cursor: pointer; font-size: 12.5px; color: #cfd4de; font-weight: 600; outline: none; }
+.acc-b { padding-top: 12px; }
+.key-grid { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.key-grid label { font-size: 12.5px; color: #cfd4de; }
+.key-grid input { background: rgba(255,255,255,.06); border: 1px solid var(--line2); color: #e8eaf0;
+  font: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 9px; outline: none; width: 100%; }
+.key-grid .kg-h { grid-column: 1 / -1; font-size: 11.5px; color: var(--dim2); margin-top: 8px; }
+
+@media (max-width: 720px) {
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-tabs { position: static; flex-direction: row; flex-wrap: wrap; }
+}

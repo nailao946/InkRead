@@ -13,16 +13,17 @@ window.IR = window.IR || {};
   await IR.vocab.reload();
   mark('4');
 
-  /* 磁盘存档：探针 + 挂钩自动存档 + 本地为空时从存档还原（生词 / 书籍 / 设置） */
+  /* 磁盘存档：探针 + 挂钩自动存档 + 与磁盘双向合并（生词 / 书籍 / 设置） */
   try {
     await IR.filestore.init();
     const restored = await IR.filestore.restore();
-    if (restored && (restored.vocab || restored.books || restored.settings)) {
+    if (restored && (restored.vocab || restored.books || restored.settings || restored.pushed)) {
       const parts = [];
       if (restored.settings) parts.push('设置');
-      if (restored.vocab) parts.push(restored.vocab + ' 个单词');
+      if (restored.vocab) parts.push(restored.vocab + ' 个单词来自存档');
+      if (restored.pushed) parts.push(restored.pushed + ' 个单词写回存档');
       if (restored.books) parts.push(restored.books + ' 本书');
-      IR.toast('已从存档还原：' + parts.join(' / '), 'ok');
+      IR.toast('已与存档同步：' + parts.join(' / '), 'ok');
     }
   } catch (e) { /* 存档不可用（如 file:// 打开）：不影响主功能 */ }
   mark('4b');

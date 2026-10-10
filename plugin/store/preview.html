@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>InkRead 墨读 · 商店素材预览（按尺寸截图）</title>
+<style>
+  :root {
+    --gold-a: #f7c948; --gold-b: #c2410c; --ink: #1a1407;
+    --bg-top: #12141a; --bg-bot: #1b1f27;
+    --new: #d64545; --learn: #3b82f6; --known: #2e9e6b; --warn: #d98a19;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px; background: #0b0c10; color: #e8eaf0;
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  h1 { font-size: 16px; color: #9aa1b0; font-weight: 600; margin: 0 0 6px; }
+  .tip { color: #7d8494; font-size: 12.5px; margin-bottom: 26px; }
+  .row { margin-bottom: 34px; }
+  .row > .cap { font-size: 12px; color: #8b93a3; margin-bottom: 8px; }
+  .row > .cap b { color: #cfd4de; }
+
+  /* ---------- 通用品牌底 ---------- */
+  .brand {
+    position: relative; overflow: hidden; display: flex; align-items: center;
+    background: radial-gradient(120% 150% at 12% 22%, rgba(120,84,22,.42), transparent 60%),
+                linear-gradient(180deg, var(--bg-top), var(--bg-bot));
+    border-radius: 14px;
+  }
+  .brand::after {          /* 斜向微高光 */
+    content: ''; position: absolute; inset: -20% -40%;
+    background: linear-gradient(100deg, transparent 46%, rgba(255,226,150,.05) 50%, transparent 54%);
+    pointer-events: none;
+  }
+  .logo {
+    flex: none; display: grid; place-items: center; font-weight: 800; color: var(--ink);
+    background: linear-gradient(140deg, var(--gold-a), var(--gold-b));
+    box-shadow: 0 18px 44px rgba(0,0,0,.45), inset 0 2px 0 rgba(255,255,255,.25);
+  }
+  .logo span { transform: translateY(-8%); }
+
+  /* ---------- 1400×560 精选横幅 ---------- */
+  .marquee { width: 1400px; height: 560px; padding: 0 84px; gap: 74px; }
+  .marquee .logo { width: 240px; height: 240px; border-radius: 52px; font-size: 92px; }
+  .marquee h2 { margin: 0 0 18px; font-size: 62px; line-height: 1.12; letter-spacing: -.5px; color: #fff; }
+  .marquee h2 em { font-style: normal; color: var(--gold-a); }
+  .marquee p { margin: 0; font-size: 25px; color: #9aa1b0; max-width: 760px; }
+  .marquee .tags { display: flex; gap: 12px; margin-top: 34px; }
+  .marquee .tags i {
+    font-style: normal; font-size: 19px; font-weight: 700; padding: 9px 20px; border-radius: 999px;
+    border: 1px solid currentColor; background: rgba(255,255,255,.04);
+  }
+
+  /* ---------- 440×280 小宣传图 ---------- */
+  .promo { width: 440px; height: 280px; padding: 0 26px; gap: 24px; }
+  .promo .logo { width: 104px; height: 104px; border-radius: 24px; font-size: 40px; }
+  .promo h2 { margin: 0 0 10px; font-size: 26px; line-height: 1.2; color: #fff; }
+  .promo h2 em { font-style: normal; color: var(--gold-a); }
+  .promo p { margin: 0; font-size: 14px; color: #9aa1b0; }
+
+  /* ---------- 1280×800 截图框（放真机截图用） ---------- */
+  .shot {
+    width: 1280px; height: 800px; border: 1px dashed #3a4150; border-radius: 12px;
+    background: repeating-linear-gradient(45deg, #14161c 0 18px, #171a21 18px 36px);
+    display: grid; place-items: center; text-align: center; color: #6b7280;
+  }
+  .shot .inner { font-size: 15px; line-height: 2; }
+  .shot .inner b { color: #cfd4de; display: block; font-size: 18px; margin-bottom: 6px; }
+
+  .status { display: flex; gap: 8px; margin-top: 14px; }
+  .status i { font-style: normal; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+</style>
+</head>
+<body>
+
+<h1>InkRead 墨读 · 商店素材预览</h1>
+<p class="tip">
+  用途：① 直接用浏览器对<b>整块画布</b>截图（DevTools → 右键元素 → Capture node screenshot），即可得到商店要求的精确尺寸；
+  ② 截图（1280×800）请把真机截图贴进最下方的虚线框区域（CSS 背景换成你的图片即可）。
+</p>
+
+<div class="row">
+  <div class="cap"><b>Chrome 精选横幅 / Edge 大宣传图</b> —— 1400 × 560</div>
+  <div class="brand marquee" id="marquee">
+    <div class="logo"><span>读</span></div>
+    <div>
+      <h2>看视频、读文章之前，<br>先知道它<em>难不难</em>。</h2>
+      <p>统计生词量 · 判断 i+1 · L1–L4 / CEFR / 蓝思三套评级<br>网页逐词上色 · 点词查释义 · 三端词库同步</p>
+      <div class="tags">
+        <i style="color:#7fe0aa">i+1 理想区</i>
+        <i style="color:#4a9be8">CEFR B2</i>
+        <i style="color:#d98a19">蓝思 900L</i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="cap"><b>Chrome 小图 / Edge 小宣传图</b> —— 440 × 280</div>
+  <div class="brand promo" id="promo">
+    <div class="logo"><span>读</span></div>
+    <div>
+      <h2>这个视频<br>对你<em>难不难</em>？</h2>
+      <p>生词量 · 等级 · i+1 建议</p>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="cap"><b>Edge 商店徽标</b> —— 300 × 300（已由 gen-store.mjs 直接生成 PNG）</div>
+  <div style="width:300px;height:300px;display:grid;place-items:center;background:linear-gradient(180deg,#12141a,#1b1f27);border-radius:16px">
+    <div class="logo" style="width:260px;height:260px;border-radius:58px;font-size:104px"><span>读</span></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="cap"><b>截图占位框</b> —— 1280 × 800（把真机截图放进来）</div>
+  <div class="shot">
+    <div class="inner">
+      <b>在此放置 1280×800 的真机截图</b>
+      ① 视频面板（等级 / 可理解度环 / i+1 结论 / 高频生词榜）<br>
+      ② 网页逐词上色 ③ 阅读模式 ④ 点词释义卡片 ⑤ 设置页
+    </div>
+  </div>
+  <div class="status">
+    <i style="background:rgba(46,158,107,.18);color:#7fe0aa">已学</i>
+    <i style="background:rgba(59,130,246,.18);color:#93c5fd">在学</i>
+    <i style="background:rgba(214,69,69,.18);color:#fca5a5">生词本</i>
+    <i style="background:rgba(217,138,25,.18);color:#fcd34d">未收录</i>
+  </div>
+</div>
+
+</body>
+</html>

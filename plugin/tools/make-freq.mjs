@@ -64,19 +64,20 @@ if (offIdx >= 0) {
   sourceDesc = SUB_URL + ' ∩ ' + GGL_URL;
 }
 
-/* ① 字幕语料：`word count` 按频次降序，只留纯字母词 */
+/* ① 字幕语料：`word count` 按频次降序，只留纯字母词（同时记下频次，供蓝思模型的「平均词频对数」用） */
 const seen = new Set();
-const sub = [];
+const sub = [];        /* { w, c } */
 let lastCount = 0;
 for (const line of subText.split(/\r?\n/)) {
   if (!line) continue;
   const sp = line.indexOf(' ');
   const w = (sp < 0 ? line : line.slice(0, sp)).trim().toLowerCase();
+  const c = sp >= 0 ? (parseInt(line.slice(sp + 1), 10) || 0) : 0;
   if (!/^[a-z]+$/.test(w) || w.length > 24) continue;
   if (seen.has(w)) continue;
   seen.add(w);
-  if (sp >= 0) lastCount = parseInt(line.slice(sp + 1), 10) || lastCount;
-  sub.push(w);
+  if (c) lastCount = c;
+  sub.push({ w, c });
   if (sub.length >= 20000) break;
 }
 
@@ -86,27 +87,36 @@ const ggl = new Set(
 );
 
 /* 交集：按字幕频次排序，保留两套语料都认的词 */
-const words = sub.filter(w => ggl.has(w)).slice(0, TOP_N);
-if (words.length < 3000) throw new Error('交集过小（' + words.length + '），语料可能损坏');
+const picked = sub.filter(x => ggl.has(x.w)).slice(0, TOP_N);
+if (picked.length < 3000) throw new Error('交集过小（' + picked.length + '），语料可能损坏');
+const words = picked.map(x => x.w);
+const counts = picked.map(x => x.c || 1);
 
 const out = {
-  v: 1,
+  v: 2,
   kind: 'en-frequency-bands',
   source: sourceDesc,
   corpora: ['OpenSubtitles 2018 (en, hermitdave/FrequencyWords)', 'google-10000-english (no-swears)'],
   method: 'intersection, ordered by subtitle frequency',
   generated: new Date().toISOString(),
   top: words.length,
-  note: '按频次降序的高频英语词表（纯字母词）。扩展用排名分档估算视频客观难度。',
-  words: words.join(' ')
+  note: '按频次降序的高频英语词表（纯字母词）。words 与 counts 同序等长：扩展用排名分档估客观难度，用 counts 算平均词频对数（蓝思模型）。',
+  words: words.join(' '),
+  counts: counts.join(' ')
 };
+
+/* 自检：words / counts 必须同序等长，且频次单调不增 */
+if (words.length !== counts.length) throw new Error('words / counts 长度不一致');
+for (let i = 1; i < counts.length; i++) {
+  if (counts[i] > counts[i - 1]) throw new Error(`频次非降序：#${i + 1} ${words[i]}=${counts[i]} > ${words[i - 1]}=${counts[i - 1]}`);
+}
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out), 'utf8');
 
 const band = n => (words.length > n ? words[n - 1] : '-');
 console.log(`\nOK  ${OUT}`);
-console.log(`    top=${words.length}  bytes=${JSON.stringify(out).length}  minSubCount≈${lastCount}`);
+console.log(`    top=${words.length}  bytes=${JSON.stringify(out).length}  tailSubCount=${counts[counts.length - 1]}`);
 for (const n of [1, 100, 500, 1000, 2000, 3000, 5000, 8000, 12000]) {
   console.log(`    #${String(n).padEnd(5)} ${band(n)}`);
 }

@@ -8,7 +8,8 @@
 import { fetchWithTimeout } from './api.js';
 
 /* ---------- 本地服务探测 ---------- */
-export const LINK_SOURCE = { local: '墨读本地服务', file: '导入文件', none: '未联动' };
+/* source 取值：dir=直连存档目录（免启动桌面版）| local=墨读本地服务 | file=导入文件 | none=未联动 */
+export const LINK_SOURCE = { dir: '存档目录直连', local: '墨读本地服务', file: '导入文件', none: '未联动' };
 
 function bases(custom, ports) {
   if (custom) return [String(custom).replace(/\/+$/, '')];
@@ -77,6 +78,17 @@ export function normalizeStatus(s, fallback) {
   const k = String(s == null ? '' : s).trim();
   if (!k) return fallback || 'new';
   return STATUS_ALIAS[k] || STATUS_ALIAS[k.toLowerCase()] || fallback || 'new';
+}
+
+/**
+ * 严格归一：只认已知状态，认不出返回 null。
+ * 与 normalizeStatus 的区别：后者「认不出就兜底成 new」，适合读取；
+ * 写回共享词库时必须用严格版，否则一个脏状态会把用户的词静默改成「生词本」。
+ */
+export function statusStrict(s) {
+  const k = String(s == null ? '' : s).trim();
+  if (!k) return null;
+  return STATUS_ALIAS[k] || STATUS_ALIAS[k.toLowerCase()] || null;
 }
 
 /** 墨读词条数组 → [[word, status], …]（去重，后者覆盖前者） */

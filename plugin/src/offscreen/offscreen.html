@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>InkRead — 存档目录读写</title>
+</head>
+<body>
+  <!--
+    离屏文档：没有界面，只在后台替 service worker 做文件系统读写。
+    为什么需要它：MV3 的 service worker 没有 DOM，File System Access 在它里面不保证可用；
+    离屏文档本质是一个隐藏的扩展页面，同源共享 IndexedDB 里存的目录句柄，一定跑得动 FSA。
+    生命周期由 src/shared/fssync.js 管理（用到时才创建）。
+  -->
+  <script type="module" src="offscreen.js"></script>
+</body>
+</html>

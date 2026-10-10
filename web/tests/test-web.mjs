@@ -261,6 +261,18 @@ try {
   check('排序列表渲染 10 个引擎且腾讯垫底', names.length === 10 && names[names.length - 1] === '腾讯云 TMT', names.join(','));
   check('排序行含上移/下移按钮', (orderHtml.match(/data-order-up/g) || []).length === 10 && (orderHtml.match(/data-order-down/g) || []).length === 10);
   check('分组标题显示已配置计数', src.indexOf('api-group-count') >= 0);
+
+  /* 三端共享词库：一个位置（<存档目录>/vocab.json），桌面版 / 网页版 / 浏览器扩展共用 */
+  check('存档区有「并入磁盘词库」入口（三端同步）', src.indexOf('data-store-merge') >= 0);
+  const setSrc = readFileSync(path.join(ROOT, 'js', 'settings.js'), 'utf8');
+  check('存档说明写明三端共用一个 vocab.json', /三端共用一个 vocab\.json/.test(setSrc));
+  check('「并入磁盘词库」绑定了 mergeVocab 与结果提示', /data-store-merge.*mergeVocab/s.test(setSrc) || /mergeVocab\(\)[\s\S]{0,400}storeStatus/.test(setSrc));
+  const fsSrc = readFileSync(path.join(ROOT, 'js', 'filestore.js'), 'utf8');
+  check('filestore 暴露 mergeVocab（按 updatedAt 双向合并）', /async mergeVocab\s*\(\)/.test(fsSrc) && /updatedAt/.test(fsSrc));
+  check('filestore.restore 改为「每次都双向合并」而非「本地为空才还原」',
+    /const mv = await this\.mergeVocab\(\)/.test(fsSrc));
+  const appSrc = readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+  check('app 启动提示含「写回存档」', /写回存档/.test(appSrc));
 }
 
 console.log(results.join('\n'));
