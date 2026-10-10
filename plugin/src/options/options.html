@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>InkRead Video — 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="head">
+      <div class="brand">
+        <span class="mark">读</span>
+        <div>
+          <h1>InkRead Video</h1>
+          <p>视频生词量 · 等级 · i+1 推荐</p>
+        </div>
+      </div>
+      <span class="ver" id="ver"></span>
+    </header>
+
+    <div class="banner" id="linkBanner">
+      <span class="dot"></span>
+      <div class="banner-t">
+        <b id="bannerTitle">正在检测…</b>
+        <span id="bannerDesc">读取墨读词库中</span>
+      </div>
+      <button class="btn" id="btnRefreshVocab">重新同步</button>
+    </div>
+
+    <!-- ============ 词库联动 ============ -->
+    <section class="card">
+      <div class="card-h">
+        <h2>词库联动</h2>
+        <p>决定「生词」以什么为标准：你的墨读词库（已学 / 在学 / 生词本）。</p>
+      </div>
+
+      <div class="modes" id="modes">
+        <label class="mode" data-mode="auto">
+          <input type="radio" name="linkmode" value="auto">
+          <div class="mode-b">
+            <b>自动联动本地服务</b>
+            <span>检测墨读桌面版 / 网页版（start-server），自动读取存档目录里的 <code>vocab.json</code>。</span>
+          </div>
+        </label>
+        <label class="mode" data-mode="manual">
+          <input type="radio" name="linkmode" value="manual">
+          <div class="mode-b">
+            <b>只用导入的词表</b>
+            <span>不访问本地服务，使用下面导入 / 绑定的词表文件。</span>
+          </div>
+        </label>
+        <label class="mode" data-mode="off">
+          <input type="radio" name="linkmode" value="off">
+          <div class="mode-b">
+            <b>关闭联动</b>
+            <span>以空词库分析：把视频里所有词都算作生词，只看「客观难度」。</span>
+          </div>
+        </label>
+      </div>
+
+      <div class="sub" data-for="auto">
+        <div class="row">
+          <label>本地服务地址</label>
+          <div class="row-c">
+            <input type="text" id="serverUrl" placeholder="留空＝自动探测 127.0.0.1：[17890…] / [8642…]" spellcheck="false">
+            <button class="btn" id="btnTest">测试连接</button>
+          </div>
+        </div>
+        <div class="row">
+          <label>探测起始端口</label>
+          <div class="row-c">
+            <input type="text" id="ports" placeholder="17890, 8642" spellcheck="false" style="max-width:180px">
+            <span class="hint">桌面版默认 17890，网页版 serve.py 默认 8642，会各自向后试 10 个端口。</span>
+          </div>
+        </div>
+        <div class="test-out" id="testOut" hidden></div>
+      </div>
+
+      <div class="sub" data-for="manual">
+        <div class="drop" id="drop">
+          <input type="file" id="file" accept=".json,.csv,.txt" hidden>
+          <div class="drop-ic">⬆</div>
+          <div class="drop-t"><b>点击选择</b>或拖拽文件到此处</div>
+          <div class="drop-s">支持：墨读「导出备份」JSON · <code>vocab.json</code> · <code>vocab.csv</code> · 纯词表 txt（每行一个单词）</div>
+        </div>
+        <div class="row" id="fsRow" hidden>
+          <label>读取存档目录</label>
+          <div class="row-c">
+            <button class="btn" id="btnPickDir">选择墨读存档目录…</button>
+            <button class="btn" id="btnSyncDir" hidden>从该目录同步</button>
+            <span class="hint" id="dirHint">Chrome / Edge 支持。选中「文档\InkRead」后可直接读取其中的 vocab.json。</span>
+          </div>
+        </div>
+        <div class="row">
+          <label>纯词表默认状态</label>
+          <div class="row-c">
+            <select id="defaultStatus">
+              <option value="known">已学（我认识这些词）</option>
+              <option value="learning">在学</option>
+              <option value="new">生词本</option>
+            </select>
+            <span class="hint">仅对「纯词表 txt」这类没有状态信息的文件生效。</span>
+          </div>
+        </div>
+        <div class="imp-out" id="impOut" hidden></div>
+      </div>
+
+      <div class="kv" id="vocabInfo"></div>
+    </section>
+
+    <!-- ============ 分析偏好 ============ -->
+    <section class="card">
+      <div class="card-h">
+        <h2>分析偏好</h2>
+        <p>控制面板显示与字幕抓取行为。</p>
+      </div>
+      <div class="row">
+        <label>页面悬浮徽标</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="uiBadge"><i></i></label>
+          <span class="hint">在视频页右下角显示等级胶囊，点击展开完整面板。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>徽标位置</label>
+        <div class="row-c">
+          <div class="seg" id="segSide">
+            <button data-v="right">右下</button>
+            <button data-v="left">左下</button>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <label>打开视频自动分析</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="autoAnalyze"><i></i></label>
+          <span class="hint">关闭后只在点击扩展图标时分析。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>优先英文字幕</label>
+        <div class="row-c">
+          <label class="switch"><input type="checkbox" id="preferEn"><i></i></label>
+          <span class="hint">开启时只分析英语字幕；若视频只有中文字幕，会明确提示「无法评估英文生词量」。</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>最小样本词数</label>
+        <div class="row-c">
+          <input type="number" id="minTokens" min="0" max="5000" step="10" style="max-width:120px">
+          <span class="hint">低于此词数会标注「样本偏小，仅供参考」。</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 数据 ============ -->
+    <section class="card">
+      <div class="card-h">
+        <h2>数据</h2>
+        <p>词库缓存与分析结果都只存在本机浏览器里，不会上传。</p>
+      </div>
+      <div class="kv" id="dataInfo"></div>
+      <div class="row">
+        <label>清理</label>
+        <div class="row-c">
+          <button class="btn" id="btnClearReports">清除分析缓存</button>
+          <button class="btn danger" id="btnClearAll">清除词库缓存 + 分析缓存</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 口径说明 ============ -->
+    <section class="card">
+      <div class="card-h"><h2>等级口径</h2></div>
+      <div class="legend-table">
+        <div class="lt-row"><span class="pill lv1">L1 轻松</span><span>可理解度 ≥98% · 自由阅读区</span></div>
+        <div class="lt-row"><span class="pill lv2">L2 适中</span><span>95–98% · <b>i+1 理想区</b>（最值得看）</span></div>
+        <div class="lt-row"><span class="pill lv3">L3 偏难</span><span>90–95% · 教学挑战区</span></div>
+        <div class="lt-row"><span class="pill lv4">L4 困难</span><span>&lt;90% · 挫败区</span></div>
+      </div>
+      <p class="fine">
+        「可理解度」＝（已学词次 + 在学词次）÷ 总词次，与墨读阅读端的书籍难度统计<b>完全同口径</b>，
+        所以视频与电子书的等级可以直接横向比较。
+        「客观难度」则脱离个人词库，用字幕里高频词的占比估算，只反映视频本身的用词难度。
+      </p>
+    </section>
+
+    <footer class="foot">
+      <span>墨读 InkRead · 视频维度扩展</span>
+      <span id="footVer"></span>
+    </footer>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

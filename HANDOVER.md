@@ -51,6 +51,19 @@ READ/
 ├─ tools/
 │  ├─ server-smoke/           LocalServer 的无 GUI 冒烟测试宿主（复用同一份 LocalServer.cs）
 │  └─ store-test/             （临时）存档测试目录，测试结束自动清理
+├─ plugin/                    浏览器扩展「InkRead Video」（Chrome/Edge/Firefox，MV3；详见其 README）
+│  ├─ manifest.json           Chrome/Edge 清单（service_worker）
+│  ├─ manifest.firefox.json   Firefox 清单（event page）
+│  ├─ build.mjs               打包 → dist/<目标>/ + zip（自带零依赖 ZIP 写入器）
+│  ├─ gen-icons.mjs           （在 tools/ 内）生成 icons/*.png
+│  ├─ data/freq-bands.json    高频词表 8107 词（双语料交集清洗，随仓库分发）
+│  ├─ src/shared/             纯逻辑：text(分词/词形/等级) · freq(词频分层) · analyze · subs(字幕) ·
+│  │                          vocab-source(本地服务/文件) · store · api(浏览器垫片)
+│  ├─ src/background/sw.js    编排：取播放器数据 → 抓字幕 → 分析 → 缓存 + 角标
+│  ├─ src/content/content.js  页面悬浮徽标 + 面板（Shadow DOM 隔离）
+│  ├─ src/popup · src/options 弹出面板 / 设置页
+│  ├─ tests/                  test-core（99）· test-integration（81）· e2e-browser（真机 CDP）
+│  └─ tools/                  make-freq · calibrate · gen-icons · check-syntax
 ├─ THEMES.md                  主题规范与维护契约
 ├─ HANDOVER.md                本文件
 ├─ README.md / README.en.md   中英文说明
@@ -222,6 +235,10 @@ cd tools/server-smoke && dotnet run --project server-smoke.csproj -- "..\..\web"
 | `node web/tests/test-bridge.mjs` | 桌面 WebMessage 桥协议（拦截/体/头/状态/错误/并发/中文） |
 | `node web/tests/test-dict.mjs` | 词典分片、lookup、词形还原、file:// 降级 |
 | `node web/tests/mobi-repro.mjs [文件]` | 用真实 MOBI 复现导入问题（诊断工具） |
+| `node plugin/tests/test-core.mjs` | **扩展核心**：分词/词形还原/覆盖率/等级档位/词频分层/站点识别/字幕解析/词表解析 |
+| `node plugin/tests/test-integration.mjs` | **扩展集成**：两份 manifest 字段与资源存在性、import 依赖图、HTML 资源、端到端分析管线 |
+| `node plugin/tests/e2e-browser.mjs` | **扩展真机 E2E**：Edge + CDP 假视频页 + 假墨读本地服务，跑通「注入→抓字幕→比对词库→面板」 |
+| `node plugin/tools/check-syntax.mjs` | 扩展源码语法检查（把 .js 按 ESM 解析） |
 
 ---
 
@@ -243,6 +260,27 @@ cd tools/server-smoke && dotnet run --project server-smoke.csproj -- "..\..\web"
 - 新增翻译服务 → 同时改「白名单（两端）+ settings 卡片 + translate.js 实现 + auto 链」。
 - 报错文案要能自证问题（带文件/参数/错误码），不要只说「失败」。
 - 主题、三色、字号等一律走 CSS 变量与设置项，不要硬编码。
+
+---
+
+## 10. 浏览器扩展 `plugin/`（InkRead Video）
+
+把墨读的「词汇分级」能力延伸到**视频**：在哔哩哔哩 / YouTube 上算一个视频的**生词量、等级、i+1 推荐**。
+
+- **联动现成、零改造**：扩展直接复用本项目的本地服务 `/__store`（已带 `Access-Control-Allow-Origin: *`），
+  探测 17890（桌面版）/ 8642（网页版）起始端口 → 读 `settings.json` 拿用户自定义 `storageDir` → 读 `vocab.json`。
+  **只读不写**，墨读侧无需任何改动。墨读没开时可导入「导出备份 JSON / vocab.json / vocab.csv / 纯词表 txt」，
+  Chrome/Edge 还可用 File System Access 绑定存档目录直接读。
+- **口径必须一致**：`plugin/src/shared/text.js` 的分词正则、`lemmas()`、覆盖率公式、
+  `levelOf()` 四档阈值，全部**逐行照搬** `web/js/util.js` + `web/js/reader.js`。
+  改任何一边，另一边必须同步——否则「视频等级」和「书籍难度」就没法比较了。
+- **字幕来源**：YouTube 走 `ytInitialPlayerResponse.captions` → `timedtext?fmt=json3`；
+  哔哩哔哩走页面内嵌 `__INITIAL_STATE__.videoData.subtitle`（免登录）→ 兜底 `api.bilibili.com/x/player/v2`。
+  取播放器数据优先用 `scripting.executeScript({world:'MAIN'})`，不支持时（FF<128）回退到内容脚本扫 `<script>` 标签。
+- **客观难度**另有一条与用户无关的尺子：`data/freq-bands.json`（8107 词，双语料交集清洗）
+  按排名分 5 档算「常用词占比」。阈值由 `tools/calibrate.mjs` 实测校准。
+- **无构建步骤**：改完 `src/` 在扩展管理页点「重新加载」。`node plugin/build.mjs` 出 `dist/`。
+  提交前跑三个测试：`test-core` / `test-integration` / `e2e-browser`。
 
 ---
 

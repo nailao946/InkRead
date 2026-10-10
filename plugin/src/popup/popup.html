@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>InkRead Video</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark">读</span>
+      <div class="brand-t">
+        <b>InkRead Video</b>
+        <span>视频生词量 · 等级 · i+1</span>
+      </div>
+    </div>
+    <div class="top-ops">
+      <button class="icon-btn" id="btnOptions" title="设置">⚙</button>
+    </div>
+  </header>
+
+  <div class="link" id="linkBar">
+    <span class="dot"></span>
+    <span class="link-t" id="linkText">正在检测墨读词库…</span>
+    <button class="link-btn" id="btnSync">同步</button>
+  </div>
+
+  <main id="main">
+    <div class="skel">
+      <div class="skel-ring"></div>
+      <div class="skel-lines"><i></i><i></i><i></i></div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span id="footNote">—</span>
+    <span class="sp"></span>
+    <button class="btn" id="btnPanel">页面面板</button>
+    <button class="btn primary" id="btnReload">重新分析</button>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

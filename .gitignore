@@ -23,6 +23,14 @@ web/tools/__pycache__/
 **/__pycache__/
 tools/store-test/
 
+# ---------- 浏览器扩展（plugin/）----------
+# dist/：node plugin/build.mjs 生成的打包产物
+plugin/dist/
+# 词频语料下载缓存（tools/make-freq.mjs 用，可重新拉取）
+plugin/tools/_cache/
+# E2E 临时浏览器配置目录
+plugin/tests/_e2e-*/
+
 # ---------- 词典 / 词组数据源缓存（可脚本重新下载，不入库） ----------
 web/tools/cache/
 web/tools/_analyze_phrases*.py
