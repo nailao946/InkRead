@@ -157,7 +157,18 @@ node tests/test-web.mjs         # 66/66：web 端完整性（资源可达与 MIM
 
 > 项目整体架构、模块职责、数据模型与接手须知见 [HANDOVER.md](./HANDOVER.md)（供后续开发者 / AI 快速接续）。
 
-## 推送到 GitHub（首次）
+## 推送到 GitHub
+
+仓库：**https://github.com/nailao946/InkRead**（私有）。`origin` 已配置、`main` 已跟踪，日常改动直接：
+
+```bash
+git add -A
+git commit -m "feat(plugin): ..."
+git push
+```
+
+<details>
+<summary>首次从零建仓的完整步骤（备忘）</summary>
 
 ```bash
 cd READ
@@ -167,6 +178,8 @@ git commit -m "feat: 墨读 InkRead — Web 版 + WPF 桌面版"
 git remote add origin <你的仓库地址>
 git push -u origin main
 ```
+
+</details>
 
 `.gitignore` 已排除构建产物（`wpf/bin`、`wpf/obj`）、运行日志、测试临时文件与真实电子书样本
 （`web/tests/samples/` 下的小样本为测试所需，已保留）。
